@@ -1,0 +1,736 @@
+﻿
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components
+
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\App.jsx
+
+import React, { useState, useEffect, useRef } from 'react';
+import Scene3D from './components/Scene3D';
+import ThemeText from './components/ThemeText';
+import themeData from './themes';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+
+const App = () => {
+  const [currentState, setCurrentState] = useState('idle');
+  const [currentTheme, setCurrentTheme] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [textState, setTextState] = useState('none');
+  const [previousText, setPreviousText] = useState(null);
+  const [currentText, setCurrentText] = useState(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  const autoChangeInterval = useRef(null);
+  const bounceAnimationRef = useRef(null);
+  const previousState = useRef('idle');
+  const directionRef = useRef(1);
+
+  const startAutoChange = () => {
+    if (autoChangeInterval.current) return;
+    
+    if (previousState.current === 'active') {
+      setDirection(1);
+      directionRef.current = 1;
+    }
+    
+    autoChangeInterval.current = setInterval(() => {
+      if (currentState === 'idle') {
+        setCurrentTheme(prev => {
+          if (prev === themeData.length - 1) {
+            setDirection(-1);
+            directionRef.current = -1;
+          }
+          else if (prev === 0) {
+            setDirection(1);
+            directionRef.current = 1;
+          }
+
+          const nextTheme = prev + directionRef.current;
+          
+          if (nextTheme >= themeData.length) {
+            return themeData.length - 1;
+          }
+          if (nextTheme < 0) {
+            return 0;
+          }
+          
+          return nextTheme;
+        });
+      }
+    }, 7000); // 10초로 변경
+  };
+
+  const handleThemeChange = (changeDirection) => {
+    if (currentState === 'active' && !bounceAnimationRef.current && !isTransitioning) {
+      const nextTheme = currentTheme + changeDirection;
+      
+      if (nextTheme < 0 || nextTheme >= themeData.length) {
+        return;
+      }
+      
+      setIsTransitioning(true);
+      setPreviousText(currentText);
+      setCurrentText(themeData[nextTheme].question);
+      setTextState('transitioning');
+      setCurrentTheme(nextTheme);
+
+      setTimeout(() => {
+        setTextState('active');
+        setIsTransitioning(false);
+      }, 900);
+    }
+  };
+
+  const handleStateChange = () => {
+    previousState.current = currentState;
+    setCurrentState('active');
+    setCurrentText(themeData[Math.round(currentTheme)].question);
+    setTextState('entering');
+    
+    setTimeout(() => {
+      setTextState('active');
+    }, 1150);
+
+    if (autoChangeInterval.current) {
+      clearInterval(autoChangeInterval.current);
+      autoChangeInterval.current = null;
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
+        handleStateChange();
+      } else if (currentState === 'active') {
+        if (e.key === 'Escape') {
+          setTextState('none');
+          previousState.current = currentState;
+          setCurrentState('idle');
+          startAutoChange();
+        } else if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
+          handleThemeChange(-1);
+        } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
+          handleThemeChange(1);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentState, currentTheme, isTransitioning]);
+
+  useEffect(() => {
+    if (currentState === 'idle') {
+      startAutoChange();
+    }
+    return () => {
+      if (autoChangeInterval.current) {
+        clearInterval(autoChangeInterval.current);
+        autoChangeInterval.current = null;
+      }
+    };
+  }, [currentState]);
+
+  // 방향 화살표 렌더링
+  const renderDirectionArrows = () => {
+  if (currentState !== 'active') return null;
+
+  return (
+    <div className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none">
+      {currentTheme > 0 && (
+        <div className="text-gray-600 animate-pulse">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+        </div>
+      )}
+      <div className="flex-grow" /> {/* 중앙 공간 */}
+      {currentTheme < themeData.length - 1 && (
+        <div className="text-gray-600 animate-pulse">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+};
+
+  return (
+    <div className="h-screen w-screen relative bg-white">
+      <Scene3D 
+        currentState={currentState}
+        currentTheme={Math.round(currentTheme)}
+      />
+      <ThemeText
+        textState={textState}
+        currentText={currentText}
+        previousText={previousText}
+        currentTheme={currentTheme}
+        isTransitioning={isTransitioning}
+      />
+      {renderDirectionArrows()}
+    </div>
+  );
+};
+
+export default App;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\index.css
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\main.jsx
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\themes.js
+
+const themeData = [
+  {
+    id: 0,
+    color: '#ff4b6b',
+    question: "당신의 가장 소중한 추억은 무엇인가요?",
+    floatingParams: { speed: 1, amplitude: 0.1, phase: 0 }
+  },
+  {
+    id: 1,
+    color: '#ffa94d',
+    question: "어린 시절 가장 행복했던 순간은?",
+    floatingParams: { speed: 0.8, amplitude: 0.15, phase: Math.PI / 3 }
+  },
+  {
+    id: 2,
+    color: '#4bc0ff',
+    question: "잊지 못할 첫 만남의 기억이 있나요?",
+    floatingParams: { speed: 1.2, amplitude: 0.12, phase: Math.PI / 1.5 }
+  },
+  {
+    id: 3,
+    color: '#9b6dff',
+    question: "가장 그리운 장소는 어디인가요?",
+    floatingParams: { speed: 0.9, amplitude: 0.14, phase: Math.PI / 2 }
+  },
+  {
+    id: 4,
+    color: '#4ade80',
+    question: "꿈꾸던 미래의 모습은 어땠나요?",
+    floatingParams: { speed: 1.1, amplitude: 0.13, phase: Math.PI / 2.5 }
+  }
+];
+
+export default themeData;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\CameraController.jsx
+
+// CameraController.jsx
+import { useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
+
+const CameraController = ({ currentState, currentTheme, spacing, centerOffset }) => {
+  const { camera } = useThree();
+  
+  useFrame(() => {
+    const targetX = (currentTheme * spacing) - centerOffset;
+    const targetY = currentState === 'active' ? 1.3 : 0;
+    
+    // 상태에 따라 다른 lerp 속도 적용
+    const xLerpSpeed = currentState === 'active' ? 0.018 : 0.01;
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, xLerpSpeed);
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.014);
+    
+    const targetZoom = currentState === 'active' ? 500 : 150;
+    camera.zoom = THREE.MathUtils.lerp(camera.zoom, targetZoom, 0.01);
+    
+    camera.rotation.set(0, 0, 0);
+    camera.updateProjectionMatrix();
+  });
+
+  return null;
+};
+
+export default CameraController;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\ContourEffect.jsx
+
+import React, { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+
+const ContourEffect = ({ color, visible, scale = 1.0 }) => {
+  const material = useRef();
+  const time = useRef(0);
+
+  useFrame((state, delta) => {
+    if (!visible) return;
+    time.current += delta;
+    if (material.current) {
+      material.current.uniforms.time.value = time.current;
+    }
+  });
+
+  const vertexShader = `
+    varying vec3 vPosition;
+    varying vec2 vUv;
+    
+    void main() {
+      vPosition = position;
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
+  const fragmentShader = `
+    uniform float time;
+    uniform vec3 color;
+    uniform float scale;
+    varying vec3 vPosition;
+    varying vec2 vUv;
+
+    //	Classic Perlin 3D Noise 
+    //	by Stefan Gustavson
+    vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+    vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+    vec3 fade(vec3 t) {return t*t*t*(t*(t*6.0-15.0)+10.0);}
+
+    float cnoise(vec3 P){
+      vec3 Pi0 = floor(P);
+      vec3 Pi1 = Pi0 + vec3(1.0);
+      Pi0 = mod(Pi0, 289.0);
+      Pi1 = mod(Pi1, 289.0);
+      vec3 Pf0 = fract(P);
+      vec3 Pf1 = Pf0 - vec3(1.0);
+      vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+      vec4 iy = vec4(Pi0.yy, Pi1.yy);
+      vec4 iz0 = Pi0.zzzz;
+      vec4 iz1 = Pi1.zzzz;
+
+      vec4 ixy = permute(permute(ix) + iy);
+      vec4 ixy0 = permute(ixy + iz0);
+      vec4 ixy1 = permute(ixy + iz1);
+
+      vec4 gx0 = ixy0/7.0;
+      vec4 gy0 = fract(floor(gx0)/7.0)-0.5;
+      gx0 = fract(gx0);
+      vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
+      vec4 sz0 = step(gz0, vec4(0.0));
+      gx0 -= sz0 * (step(0.0, gx0) - 0.5);
+      gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+
+      vec4 gx1 = ixy1/7.0;
+      vec4 gy1 = fract(floor(gx1)/7.0)-0.5;
+      gx1 = fract(gx1);
+      vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
+      vec4 sz1 = step(gz1, vec4(0.0));
+      gx1 -= sz1 * (step(0.0, gx1) - 0.5);
+      gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+
+      vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
+      vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+      vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
+      vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+      vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
+      vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+      vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
+      vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+
+      vec4 norm0 = taylorInvSqrt(vec4(dot(g000, g000), dot(g010, g010), dot(g100, g100), dot(g110, g110)));
+      g000 *= norm0.x;
+      g010 *= norm0.y;
+      g100 *= norm0.z;
+      g110 *= norm0.w;
+      vec4 norm1 = taylorInvSqrt(vec4(dot(g001, g001), dot(g011, g011), dot(g101, g101), dot(g111, g111)));
+      g001 *= norm1.x;
+      g011 *= norm1.y;
+      g101 *= norm1.z;
+      g111 *= norm1.w;
+
+      float n000 = dot(g000, Pf0);
+      float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
+      float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
+      float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
+      float n001 = dot(g001, vec3(Pf0.xy, Pf1.z));
+      float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
+      float n011 = dot(g011, vec3(Pf0.x, Pf1.yz));
+      float n111 = dot(g111, Pf1);
+
+      vec3 fade_xyz = fade(Pf0);
+      vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
+      vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
+      float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x); 
+      return 2.2 * n_xyz;
+    }
+
+    void main() {
+      float n = cnoise(vec3(vUv * scale, time * 0.5));
+      float lines = smoothstep(0.0, 0.1, abs(n));
+      gl_FragColor = vec4(color, (1.0 - lines) * 0.3);
+    }
+  `;
+
+  return (
+    <mesh visible={visible} position={[0, 0, -1.9]}>
+      <planeGeometry args={[20, 10, 1, 1]} />
+      <shaderMaterial
+        ref={material}
+        vertexShader={vertexShader}
+        fragmentShader={fragmentShader}
+        transparent={true}
+        uniforms={{
+          time: { value: 0 },
+          color: { value: new THREE.Color(color) },
+          scale: { value: scale }
+        }}
+      />
+    </mesh>
+  );
+};
+
+export default ContourEffect;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\Scene3D.jsx
+
+import React from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrthographicCamera } from '@react-three/drei';
+import ThemeSphere from './ThemeSphere';
+import CameraController from './CameraController';
+import themeData from '../themes';
+
+const Scene3D = ({ currentState, currentTheme }) => {
+  const spacing = 1.5;
+  const decorationCount = 5;
+  const centerOffset = ((themeData.length - 1) * spacing) / 2;
+  
+  const getThemePosition = (index) => [
+    index * spacing - centerOffset,
+    0,
+    -1
+  ];
+
+  // 장식용 구의 위치 생성
+  const createDecorationPositions = () => {
+    const positions = [];
+    // 왼쪽 장식용 구
+    for (let i = 1; i <= decorationCount; i++) {
+      positions.push([-centerOffset - (i * spacing), 0, -1]);
+    }
+    // 오른쪽 장식용 구
+    for (let i = 1; i <= decorationCount; i++) {
+      positions.push([centerOffset + (i * spacing), 0, -1]);
+    }
+    return positions;
+  };
+
+  const decorationPositions = createDecorationPositions();
+
+  return (
+    <Canvas shadows>
+      <color attach="background" args={['#FFFFFF']} />
+      <OrthographicCamera 
+        makeDefault 
+        position={[0, 0, 5]} 
+        zoom={150}
+        rotation={[0, 0, 0]}
+      />
+      <CameraController
+        currentState={currentState}
+        currentTheme={currentTheme}
+        spacing={spacing}
+        centerOffset={centerOffset}
+      />
+      
+      <ambientLight intensity={0.8} />
+      <directionalLight
+        position={[2, 2, 10]}
+        intensity={1}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-left={-15}
+        shadow-camera-right={15}
+        shadow-camera-top={15}
+        shadow-camera-bottom={-15}
+        shadow-camera-near={0.1}
+        shadow-camera-far={30}
+        shadow-radius={10}
+        shadow-bias={-0.001}
+      />
+      <pointLight position={[-5, 5, -5]} intensity={0.3} />
+      
+      <mesh position={[0, -0.7, -2]} receiveShadow>
+        <planeGeometry args={[50, 50]} />
+        <meshStandardMaterial color="#FFFFFF" />
+      </mesh>
+      
+      {/* 장식용 구들 */}
+      {decorationPositions.map((position, i) => (
+        <ThemeSphere
+          key={`decoration-${i}`}
+          position={position}
+          isActive={false}
+          state={currentState}
+          isDecoration={true}
+          color={'#cccccc'}
+        />
+      ))}
+      
+      {/* 테마 구들 */}
+      {themeData.map((theme, i) => (
+        <ThemeSphere
+          key={theme.id}
+          position={getThemePosition(i)}
+          color={theme.color}
+          isActive={Math.round(currentTheme) === i}
+          state={currentState}
+        />
+      ))}
+    </Canvas>
+  );
+};
+
+export default Scene3D;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\ThemeSphere.jsx
+
+import React, { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+
+const DecorationSphere = ({ position, state }) => {
+  const group = useRef();
+  const scaleRef = useRef(1);
+  const targetScale = 0.8;
+
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    
+    scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, 0.03);
+    group.current.scale.setScalar(scaleRef.current);
+    
+    let targetY = position[1];
+    
+    if (state !== 'active') {
+      const time = clock.getElapsedTime();
+      const baseFreq = 0.6;
+      const waveSpeed = 2;
+      const amplitude = 0.1;
+      
+      const wave = Math.sin(time * waveSpeed + position[0] * baseFreq) * amplitude;
+      targetY += wave;
+    }
+    
+    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, targetY, 0.03);
+    group.current.position.x = position[0];
+    group.current.position.z = position[2];
+  });
+
+  return (
+    <group ref={group} position={position}>
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.4, 64, 64]} />
+        <meshPhysicalMaterial
+          transparent
+          opacity={0.2}
+          roughness={0}
+          transmission={0.95}
+          thickness={0.5}
+          clearcoat={1}
+          clearcoatRoughness={0}
+          ior={1.5}
+        />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.32, 32, 32]} />
+        <meshStandardMaterial
+          color="#ffffff"
+          roughness={0.6}
+          metalness={0.8}
+        />
+      </mesh>
+    </group>
+  );
+};
+
+
+const ThemeSphereOuter = ({ position, isActive, state, children }) => {
+  const group = useRef();
+  const scaleRef = useRef(1);
+  const targetScale = isActive ? (state === 'active' ? 1.8 : 1.2) : 0.8;
+
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    
+    scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, 0.03);
+    group.current.scale.setScalar(scaleRef.current);
+    
+    let targetY = position[1];
+    
+    if (state === 'active' && isActive) {
+      targetY += 0.3;
+    }
+    
+    if (state !== 'active') {
+      const time = clock.getElapsedTime();
+      const baseFreq = 0.6;
+      const waveSpeed = 2;
+      const amplitude = 0.1;
+      
+      const wave = Math.sin(time * waveSpeed + position[0] * baseFreq) * amplitude;
+      targetY += wave;
+    }
+    
+    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, targetY, 0.03);
+    group.current.position.x = position[0];
+    group.current.position.z = position[2];
+  });
+
+  return (
+    <group ref={group} position={position}>
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.4, 64, 64]} />
+        <meshPhysicalMaterial
+          transparent
+          opacity={0.2}
+          roughness={0}
+          transmission={0.95}
+          thickness={0.5}
+          clearcoat={1}
+          clearcoatRoughness={0}
+          ior={1.5}
+        />
+      </mesh>
+      {children}
+    </group>
+  );
+};
+
+const ThemeSphereInner = ({ color }) => {
+  return (
+    <mesh>
+      <sphereGeometry args={[0.32, 32, 32]} />
+      <meshPhysicalMaterial
+        color={color}
+        emissive={color}
+        emissiveIntensity={0.5}
+        roughness={0.2}
+        metalness={0.8}
+        clearcoat={1}
+      />
+    </mesh>
+  );
+};
+
+const ThemeSphere = ({ position, color, isActive, state, isDecoration = false }) => {
+  if (isDecoration) {
+    return <DecorationSphere position={position} state={state} />;
+  }
+
+  return (
+    <ThemeSphereOuter position={position} isActive={isActive} state={state}>
+      <ThemeSphereInner color={color} />
+    </ThemeSphereOuter>
+  );
+};
+
+export default ThemeSphere;
+export { ThemeSphereOuter, ThemeSphereInner };
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\ThemeText.jsx
+
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+const TextContent = ({ text, className = "" }) => (
+  <div className={`flex flex-col items-center space-y-4 absolute w-full ${className}`}>
+    <div className="text-gray-800 text-4xl font-bold">
+      {text}
+    </div>
+    <div className="text-gray-400 text-4xl font-bold opacity-30">
+      {text}
+    </div>
+  </div>
+);
+
+const ThemeText = ({ 
+  textState, 
+  currentText, 
+  previousText, 
+  currentTheme,
+  isTransitioning 
+}) => {
+  if (isTransitioning && textState !== 'transitioning') return null;
+
+  return (
+    <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-10">
+      <AnimatePresence mode="wait">
+        {textState === 'entering' && (
+          <motion.div
+            key={`enter-${currentTheme}`}
+            initial={{ opacity: 0, y: -90 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ 
+              duration: 1.1,
+              ease: "easeOut",
+              delay: 0.1
+            }}
+          >
+            <TextContent text={currentText} />
+          </motion.div>
+        )}
+
+        {textState === 'transitioning' && previousText && (
+          <motion.div
+            key={`prev-${currentTheme}-exit`}
+            initial={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 0, y: -30 }}
+            exit={{ opacity: 0, y: -30 }}
+            transition={{ 
+              duration: 0.5,
+              ease: "easeInOut"
+            }}
+          >
+            <TextContent text={previousText} />
+          </motion.div>
+        )}
+        
+        {textState === 'transitioning' && (
+          <motion.div
+            key={`current-${currentTheme}-enter`}
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ 
+              duration: 0.5,
+              ease: "easeInOut",
+              delay: 0.05
+            }}
+          >
+            <TextContent text={currentText} />
+          </motion.div>
+        )}
+
+        {textState === 'active' && (
+          <TextContent text={currentText} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default ThemeText;
