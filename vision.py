@@ -52,10 +52,10 @@ class ExhibitionDetectionServer:
         
         # Trackbar 생성
         cv2.createTrackbar('Target FPS', 'Controls', 30, 60, nothing)  # FPS 제어
-        cv2.createTrackbar('Shoulder Width (%)', 'Controls', 20, 100, nothing)  # 어깨 너비 임계값
+        cv2.createTrackbar('Shoulder Width (%)', 'Controls', 40, 100, nothing)  # 어깨 너비 임계값
         cv2.createTrackbar('Min Swipe Distance (%)', 'Controls', 10, 100, nothing)  # 최소 스와이프 거리
         cv2.createTrackbar('Min Speed (px/s)', 'Controls', 500, 2000, nothing)  # 최소 스와이프 속도
-        cv2.createTrackbar('Presence Timeout (s)', 'Controls', 5, 10, nothing)  # presence 타임아웃
+        cv2.createTrackbar('Presence Timeout (s)', 'Controls', 2, 15, nothing)  # presence 타임아웃
         cv2.createTrackbar('Swipe Cooldown (ms)', 'Controls', 1000, 2000, nothing)  # 스와이프 쿨다운
         
         # 상태 변수

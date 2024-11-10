@@ -22,7 +22,7 @@ const ThemeText = ({
   if (isTransitioning && textState !== 'transitioning') return null;
 
   return (
-    <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-10">
+    <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-[1]">
       <AnimatePresence mode="wait">
         {textState === 'entering' && (
           <motion.div

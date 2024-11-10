@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Scene3D from './components/Scene3D';
 import ThemeText from './components/ThemeText';
-import themeData from './themes';
+import ChatInterface from './components/ChatInterface';
+import StartGuide from './components/StartGuide';
+import { initialThemeData, generateThemeData } from './themes';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
+import visionService from './services/visionService';
 
 const App = () => {
   const [currentState, setCurrentState] = useState('idle');
@@ -12,97 +16,287 @@ const App = () => {
   const [previousText, setPreviousText] = useState(null);
   const [currentText, setCurrentText] = useState(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatClosing, setIsChatClosing] = useState(false);
+  const [themes, setThemes] = useState(initialThemeData);
+  const [isViewerPresent, setIsViewerPresent] = useState(false);
+  const [hasKeyInteraction, setHasKeyInteraction] = useState(false);
+  const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
+  const [isActive, setIsActive] = useState(false);
 
   const autoChangeInterval = useRef(null);
   const bounceAnimationRef = useRef(null);
-  const previousState = useRef('idle');
+  const inactivityTimerRef = useRef(null);
+  const guideTimerRef = useRef(null);
   const directionRef = useRef(1);
+  const lastInactiveTime = useRef(null);
 
-  const startAutoChange = () => {
-    if (autoChangeInterval.current) return;
-    
-    if (previousState.current === 'active') {
-      setDirection(1);
-      directionRef.current = 1;
-    }
-    
-    autoChangeInterval.current = setInterval(() => {
-      if (currentState === 'idle') {
-        setCurrentTheme(prev => {
-          if (prev === themeData.length - 1) {
-            setDirection(-1);
-            directionRef.current = -1;
-          }
-          else if (prev === 0) {
-            setDirection(1);
-            directionRef.current = 1;
-          }
-
-          const nextTheme = prev + directionRef.current;
-          
-          if (nextTheme >= themeData.length) {
-            return themeData.length - 1;
-          }
-          if (nextTheme < 0) {
-            return 0;
-          }
-          
-          return nextTheme;
-        });
-      }
-    }, 7000); // 10초로 변경
-  };
-
-  const handleThemeChange = (changeDirection) => {
-    if (currentState === 'active' && !bounceAnimationRef.current && !isTransitioning) {
-      const nextTheme = currentTheme + changeDirection;
-      
-      if (nextTheme < 0 || nextTheme >= themeData.length) {
-        return;
-      }
-      
-      setIsTransitioning(true);
-      setPreviousText(currentText);
-      setCurrentText(themeData[nextTheme].question);
-      setTextState('transitioning');
-      setCurrentTheme(nextTheme);
-
-      setTimeout(() => {
-        setTextState('active');
-        setIsTransitioning(false);
-      }, 900);
-    }
-  };
-
-  const handleStateChange = () => {
-    previousState.current = currentState;
-    setCurrentState('active');
-    setCurrentText(themeData[Math.round(currentTheme)].question);
-    setTextState('entering');
-    
-    setTimeout(() => {
-      setTextState('active');
-    }, 1150);
-
+  const clearAllTimers = () => {
     if (autoChangeInterval.current) {
       clearInterval(autoChangeInterval.current);
       autoChangeInterval.current = null;
     }
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+    if (guideTimerRef.current) {
+      clearTimeout(guideTimerRef.current);
+      guideTimerRef.current = null;
+    }
+    lastInactiveTime.current = null;
   };
+
+  const startGuideTimer = () => {
+    if (guideTimerRef.current) {
+      clearTimeout(guideTimerRef.current);
+    }
+    
+    if (currentState === 'idle' && isViewerPresent && !hasKeyInteraction) {
+      guideTimerRef.current = setTimeout(() => {
+        setHasKeyInteraction(true);
+      }, 4000);
+    }
+  };
+
+  const checkAndResetInactivity = () => {
+    if (!isViewerPresent && lastInactiveTime.current) {
+      const currentTime = Date.now();
+      const inactiveTime = currentTime - lastInactiveTime.current;
+      const timeout = isChatOpen ? 10000 : 7000;
+
+      if (inactiveTime >= timeout) {
+        handleReset();
+      }
+    }
+  };
+
+  const startInactivityTimer = () => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+
+    if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+      lastInactiveTime.current = Date.now();
+
+      const timeout = isChatOpen ? 10000 : 7000;
+      inactivityTimerRef.current = setTimeout(() => {
+        checkAndResetInactivity();
+      }, timeout);
+    }
+  };
+
+  const startAutoChange = () => {
+    if (autoChangeInterval.current) {
+      clearInterval(autoChangeInterval.current);
+    }
+
+    if (currentState === 'idle') {
+      setDirection(1);
+      directionRef.current = 1;
+      
+      autoChangeInterval.current = setInterval(() => {
+        setCurrentTheme(prev => {
+          if (prev === themes.length - 1) {
+            setDirection(-1);
+            directionRef.current = -1;
+            return prev - 1;
+          }
+          else if (prev === 0) {
+            setDirection(1);
+            directionRef.current = 1;
+            return prev + 1;
+          }
+          return prev + directionRef.current;
+        });
+      }, 7000);
+    }
+  };
+
+  const startIdleMode = () => {
+    clearAllTimers();
+    setCurrentState('idle');
+    setTextState('none');
+    setThemes(generateThemeData());
+    setCurrentTheme(0);
+    setHasKeyInteraction(false);
+    setIsActive(false);
+    startAutoChange();
+  };
+
+  window.resetToIdle = startIdleMode;
+
+  const handleReset = () => {
+    setIsChatOpen(false);
+    setIsChatClosing(true);
+    setTimeout(() => {
+      setIsChatClosing(false);
+      startIdleMode();
+    }, 500);
+  };
+
+  const handleInteraction = () => {
+    setLastInteractionTime(Date.now());
+    if (lastInactiveTime.current) {
+      lastInactiveTime.current = Date.now();
+    }
+    if (currentState === 'idle') {
+      setHasKeyInteraction(true);
+      if (guideTimerRef.current) {
+        clearTimeout(guideTimerRef.current);
+      }
+    }
+  };
+
+  const handleThemeChange = (changeDirection) => {
+    if ((currentState === 'active' || currentState === 'idle') && 
+        !bounceAnimationRef.current && !isTransitioning) {
+      const nextTheme = currentTheme + changeDirection;
+      
+      if (nextTheme < 0 || nextTheme >= themes.length) {
+        return;
+      }
+      
+      handleInteraction();
+      
+      if (currentState === 'active') {
+        setIsTransitioning(true);
+        setPreviousText(currentText);
+        setCurrentText(themes[nextTheme].question);
+        setTextState('transitioning');
+      }
+      
+      setCurrentTheme(nextTheme);
+
+      if (currentState === 'active') {
+        setTimeout(() => {
+          setTextState('active');
+          setIsTransitioning(false);
+        }, 900);
+      }
+
+      if (currentState === 'idle') {
+        startAutoChange();
+      }
+    }
+  };
+
+  const handleStateChange = () => {
+    setHasKeyInteraction(true);
+    
+    if (currentState === 'active') {
+      setIsChatOpen(true);
+    } else {
+      setIsActive(true);
+      setCurrentState('active');
+      setCurrentText(themes[Math.round(currentTheme)].question);
+      setTextState('entering');
+      
+      setTimeout(() => {
+        setTextState('active');
+      }, 1150);
+
+      if (autoChangeInterval.current) {
+        clearInterval(autoChangeInterval.current);
+        autoChangeInterval.current = null;
+      }
+    }
+    
+    handleInteraction();
+  };
+
+  const handleChatClose = () => {
+    setIsChatClosing(true);
+    setIsChatOpen(false);
+    setTimeout(() => {
+      setIsChatClosing(false);
+    }, 500);
+  };
+
+  // Vision Service 효과
+  useEffect(() => {
+    visionService.onPresenceChange = (present) => {
+      setIsViewerPresent(present);
+      if (present) {
+        if (currentState === 'idle') {
+          setHasKeyInteraction(false);
+          startGuideTimer();
+        } else {
+          // 사용자가 돌아왔을 때 타이머 초기화
+          lastInactiveTime.current = null;
+          if (inactivityTimerRef.current) {
+            clearTimeout(inactivityTimerRef.current);
+            inactivityTimerRef.current = null;
+          }
+        }
+      } else if (isActive || isChatOpen) {
+        startInactivityTimer();
+      }
+    };
+
+    visionService.onSwipeDetected = (direction) => {
+      if ((currentState === 'active' || currentState === 'idle') && !isChatOpen) {
+        handleInteraction();
+        handleThemeChange(direction === 'left' ? -1 : 1);
+      }
+    };
+
+    visionService.connect();
+    return () => visionService.disconnect();
+  }, [currentState, isChatOpen, isActive]);
+
+  // 주기적으로 비활성 상태 체크
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+        checkAndResetInactivity();
+      }
+    }, 1000);
+
+    return () => clearInterval(checkInterval);
+  }, [isViewerPresent, currentState, isChatOpen]);
+
+  useEffect(() => {
+    if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+      startInactivityTimer();
+    }
+  }, [isViewerPresent, currentState, isChatOpen]);
+
+  useEffect(() => {
+    if (currentState === 'idle') {
+      startAutoChange();
+    }
+    return () => clearAllTimers();
+  }, [currentState]);
 
   useEffect(() => {
     const handleKeyPress = (e) => {
+      handleInteraction();
+
+      if (e.key === 'Escape') {
+        if (isChatOpen) {
+          handleChatClose();
+        } else if (currentState === 'active') {
+          handleReset();
+        }
+      }
+      
+      if (isChatOpen) return;
+
       if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
         handleStateChange();
       } else if (currentState === 'active') {
-        if (e.key === 'Escape') {
-          setTextState('none');
-          previousState.current = currentState;
-          setCurrentState('idle');
-          startAutoChange();
-        } else if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
+        if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
           handleThemeChange(-1);
         } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
+          handleThemeChange(1);
+        } else if (e.key === ' ' || e.key === 'Enter') {
+          handleStateChange();
+        }
+      } else if (currentState === 'idle') {
+        if (e.key === 'ArrowLeft' || e.key === 'a') {
+          handleThemeChange(-1);
+        } else if (e.key === 'ArrowRight' || e.key === 'd') {
           handleThemeChange(1);
         }
       }
@@ -110,50 +304,62 @@ const App = () => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentState, currentTheme, isTransitioning]);
+  }, [currentState, currentTheme, isTransitioning, isChatOpen]);
 
-  useEffect(() => {
-    if (currentState === 'idle') {
-      startAutoChange();
-    }
-    return () => {
-      if (autoChangeInterval.current) {
-        clearInterval(autoChangeInterval.current);
-        autoChangeInterval.current = null;
-      }
-    };
-  }, [currentState]);
-
-  // 방향 화살표 렌더링
   const renderDirectionArrows = () => {
-  if (currentState !== 'active') return null;
+    if (currentState !== 'active') return null;
 
-  return (
-    <div className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none">
-      {currentTheme > 0 && (
-        <div className="text-gray-600 animate-pulse">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-        </div>
-      )}
-      <div className="flex-grow" /> {/* 중앙 공간 */}
-      {currentTheme < themeData.length - 1 && (
-        <div className="text-gray-600 animate-pulse">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-          </svg>
-        </div>
-      )}
-    </div>
-  );
-};
+    return (
+      <AnimatePresence mode="wait">
+        {!isChatOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+            className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
+          >
+            {currentTheme > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="text-gray-600 animate-pulse"
+              >
+                <ArrowLeft size={64} strokeWidth={2.5} />
+              </motion.div>
+            )}
+            <div className="flex-grow" />
+            {currentTheme < themes.length - 1 && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="text-gray-600 animate-pulse"
+              >
+                <ArrowRight size={64} strokeWidth={2.5} />
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  };
 
   return (
     <div className="h-screen w-screen relative bg-white">
       <Scene3D 
         currentState={currentState}
         currentTheme={Math.round(currentTheme)}
+        isChatOpen={isChatOpen}
+        themes={themes}
+      />
+      <StartGuide 
+        isVisible={currentState === 'idle' && isViewerPresent && !hasKeyInteraction}
+        currentState={currentState}
+        onKeyInteraction={hasKeyInteraction}
       />
       <ThemeText
         textState={textState}
@@ -163,6 +369,15 @@ const App = () => {
         isTransitioning={isTransitioning}
       />
       {renderDirectionArrows()}
+      <ChatInterface 
+        isOpen={isChatOpen}
+        isClosing={isChatClosing}
+        currentQuestion={themes[Math.round(currentTheme)].question}
+        currentTheme={currentTheme}
+        onClose={handleChatClose}
+        themeColor={themes[Math.round(currentTheme)].color}
+        onInteraction={handleInteraction}
+      />
     </div>
   );
 };

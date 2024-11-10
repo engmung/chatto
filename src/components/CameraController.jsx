@@ -8,7 +8,7 @@ const CameraController = ({ currentState, currentTheme, spacing, centerOffset })
   useFrame((state, delta) => {
     const targetX = (currentTheme * spacing) - centerOffset;
     const targetY = currentState === 'active' ? 1.42 : 0;
-    const targetZoom = currentState === 'active' ? 500 : 150;
+    const targetZoom = currentState === 'active' ? 500 : 200;
     
     // deltaTime을 이용한 보간
     const xDelta = (targetX - camera.position.x) * (currentState === 'active' ? 1.5 : 1.0) * lerpSpeed * delta;

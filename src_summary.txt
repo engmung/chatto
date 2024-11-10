@@ -2,13 +2,23 @@
 Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components
 
 
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\services
+
+
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\types
+
+
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\App.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Scene3D from './components/Scene3D';
 import ThemeText from './components/ThemeText';
-import themeData from './themes';
+import ChatInterface from './components/ChatInterface';
+import StartGuide from './components/StartGuide';
+import { initialThemeData, generateThemeData } from './themes';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
+import visionService from './services/visionService';
 
 const App = () => {
   const [currentState, setCurrentState] = useState('idle');
@@ -18,97 +28,287 @@ const App = () => {
   const [previousText, setPreviousText] = useState(null);
   const [currentText, setCurrentText] = useState(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatClosing, setIsChatClosing] = useState(false);
+  const [themes, setThemes] = useState(initialThemeData);
+  const [isViewerPresent, setIsViewerPresent] = useState(false);
+  const [hasKeyInteraction, setHasKeyInteraction] = useState(false);
+  const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
+  const [isActive, setIsActive] = useState(false);
 
   const autoChangeInterval = useRef(null);
   const bounceAnimationRef = useRef(null);
-  const previousState = useRef('idle');
+  const inactivityTimerRef = useRef(null);
+  const guideTimerRef = useRef(null);
   const directionRef = useRef(1);
+  const lastInactiveTime = useRef(null);
 
-  const startAutoChange = () => {
-    if (autoChangeInterval.current) return;
-    
-    if (previousState.current === 'active') {
-      setDirection(1);
-      directionRef.current = 1;
-    }
-    
-    autoChangeInterval.current = setInterval(() => {
-      if (currentState === 'idle') {
-        setCurrentTheme(prev => {
-          if (prev === themeData.length - 1) {
-            setDirection(-1);
-            directionRef.current = -1;
-          }
-          else if (prev === 0) {
-            setDirection(1);
-            directionRef.current = 1;
-          }
-
-          const nextTheme = prev + directionRef.current;
-          
-          if (nextTheme >= themeData.length) {
-            return themeData.length - 1;
-          }
-          if (nextTheme < 0) {
-            return 0;
-          }
-          
-          return nextTheme;
-        });
-      }
-    }, 7000); // 10초로 변경
-  };
-
-  const handleThemeChange = (changeDirection) => {
-    if (currentState === 'active' && !bounceAnimationRef.current && !isTransitioning) {
-      const nextTheme = currentTheme + changeDirection;
-      
-      if (nextTheme < 0 || nextTheme >= themeData.length) {
-        return;
-      }
-      
-      setIsTransitioning(true);
-      setPreviousText(currentText);
-      setCurrentText(themeData[nextTheme].question);
-      setTextState('transitioning');
-      setCurrentTheme(nextTheme);
-
-      setTimeout(() => {
-        setTextState('active');
-        setIsTransitioning(false);
-      }, 900);
-    }
-  };
-
-  const handleStateChange = () => {
-    previousState.current = currentState;
-    setCurrentState('active');
-    setCurrentText(themeData[Math.round(currentTheme)].question);
-    setTextState('entering');
-    
-    setTimeout(() => {
-      setTextState('active');
-    }, 1150);
-
+  const clearAllTimers = () => {
     if (autoChangeInterval.current) {
       clearInterval(autoChangeInterval.current);
       autoChangeInterval.current = null;
     }
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+    if (guideTimerRef.current) {
+      clearTimeout(guideTimerRef.current);
+      guideTimerRef.current = null;
+    }
+    lastInactiveTime.current = null;
   };
+
+  const startGuideTimer = () => {
+    if (guideTimerRef.current) {
+      clearTimeout(guideTimerRef.current);
+    }
+    
+    if (currentState === 'idle' && isViewerPresent && !hasKeyInteraction) {
+      guideTimerRef.current = setTimeout(() => {
+        setHasKeyInteraction(true);
+      }, 4000);
+    }
+  };
+
+  const checkAndResetInactivity = () => {
+    if (!isViewerPresent && lastInactiveTime.current) {
+      const currentTime = Date.now();
+      const inactiveTime = currentTime - lastInactiveTime.current;
+      const timeout = isChatOpen ? 10000 : 7000;
+
+      if (inactiveTime >= timeout) {
+        handleReset();
+      }
+    }
+  };
+
+  const startInactivityTimer = () => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+
+    if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+      lastInactiveTime.current = Date.now();
+
+      const timeout = isChatOpen ? 10000 : 7000;
+      inactivityTimerRef.current = setTimeout(() => {
+        checkAndResetInactivity();
+      }, timeout);
+    }
+  };
+
+  const startAutoChange = () => {
+    if (autoChangeInterval.current) {
+      clearInterval(autoChangeInterval.current);
+    }
+
+    if (currentState === 'idle') {
+      setDirection(1);
+      directionRef.current = 1;
+      
+      autoChangeInterval.current = setInterval(() => {
+        setCurrentTheme(prev => {
+          if (prev === themes.length - 1) {
+            setDirection(-1);
+            directionRef.current = -1;
+            return prev - 1;
+          }
+          else if (prev === 0) {
+            setDirection(1);
+            directionRef.current = 1;
+            return prev + 1;
+          }
+          return prev + directionRef.current;
+        });
+      }, 7000);
+    }
+  };
+
+  const startIdleMode = () => {
+    clearAllTimers();
+    setCurrentState('idle');
+    setTextState('none');
+    setThemes(generateThemeData());
+    setCurrentTheme(0);
+    setHasKeyInteraction(false);
+    setIsActive(false);
+    startAutoChange();
+  };
+
+  window.resetToIdle = startIdleMode;
+
+  const handleReset = () => {
+    setIsChatOpen(false);
+    setIsChatClosing(true);
+    setTimeout(() => {
+      setIsChatClosing(false);
+      startIdleMode();
+    }, 500);
+  };
+
+  const handleInteraction = () => {
+    setLastInteractionTime(Date.now());
+    if (lastInactiveTime.current) {
+      lastInactiveTime.current = Date.now();
+    }
+    if (currentState === 'idle') {
+      setHasKeyInteraction(true);
+      if (guideTimerRef.current) {
+        clearTimeout(guideTimerRef.current);
+      }
+    }
+  };
+
+  const handleThemeChange = (changeDirection) => {
+    if ((currentState === 'active' || currentState === 'idle') && 
+        !bounceAnimationRef.current && !isTransitioning) {
+      const nextTheme = currentTheme + changeDirection;
+      
+      if (nextTheme < 0 || nextTheme >= themes.length) {
+        return;
+      }
+      
+      handleInteraction();
+      
+      if (currentState === 'active') {
+        setIsTransitioning(true);
+        setPreviousText(currentText);
+        setCurrentText(themes[nextTheme].question);
+        setTextState('transitioning');
+      }
+      
+      setCurrentTheme(nextTheme);
+
+      if (currentState === 'active') {
+        setTimeout(() => {
+          setTextState('active');
+          setIsTransitioning(false);
+        }, 900);
+      }
+
+      if (currentState === 'idle') {
+        startAutoChange();
+      }
+    }
+  };
+
+  const handleStateChange = () => {
+    setHasKeyInteraction(true);
+    
+    if (currentState === 'active') {
+      setIsChatOpen(true);
+    } else {
+      setIsActive(true);
+      setCurrentState('active');
+      setCurrentText(themes[Math.round(currentTheme)].question);
+      setTextState('entering');
+      
+      setTimeout(() => {
+        setTextState('active');
+      }, 1150);
+
+      if (autoChangeInterval.current) {
+        clearInterval(autoChangeInterval.current);
+        autoChangeInterval.current = null;
+      }
+    }
+    
+    handleInteraction();
+  };
+
+  const handleChatClose = () => {
+    setIsChatClosing(true);
+    setIsChatOpen(false);
+    setTimeout(() => {
+      setIsChatClosing(false);
+    }, 500);
+  };
+
+  // Vision Service 효과
+  useEffect(() => {
+    visionService.onPresenceChange = (present) => {
+      setIsViewerPresent(present);
+      if (present) {
+        if (currentState === 'idle') {
+          setHasKeyInteraction(false);
+          startGuideTimer();
+        } else {
+          // 사용자가 돌아왔을 때 타이머 초기화
+          lastInactiveTime.current = null;
+          if (inactivityTimerRef.current) {
+            clearTimeout(inactivityTimerRef.current);
+            inactivityTimerRef.current = null;
+          }
+        }
+      } else if (isActive || isChatOpen) {
+        startInactivityTimer();
+      }
+    };
+
+    visionService.onSwipeDetected = (direction) => {
+      if ((currentState === 'active' || currentState === 'idle') && !isChatOpen) {
+        handleInteraction();
+        handleThemeChange(direction === 'left' ? -1 : 1);
+      }
+    };
+
+    visionService.connect();
+    return () => visionService.disconnect();
+  }, [currentState, isChatOpen, isActive]);
+
+  // 주기적으로 비활성 상태 체크
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+        checkAndResetInactivity();
+      }
+    }, 1000);
+
+    return () => clearInterval(checkInterval);
+  }, [isViewerPresent, currentState, isChatOpen]);
+
+  useEffect(() => {
+    if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+      startInactivityTimer();
+    }
+  }, [isViewerPresent, currentState, isChatOpen]);
+
+  useEffect(() => {
+    if (currentState === 'idle') {
+      startAutoChange();
+    }
+    return () => clearAllTimers();
+  }, [currentState]);
 
   useEffect(() => {
     const handleKeyPress = (e) => {
+      handleInteraction();
+
+      if (e.key === 'Escape') {
+        if (isChatOpen) {
+          handleChatClose();
+        } else if (currentState === 'active') {
+          handleReset();
+        }
+      }
+      
+      if (isChatOpen) return;
+
       if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
         handleStateChange();
       } else if (currentState === 'active') {
-        if (e.key === 'Escape') {
-          setTextState('none');
-          previousState.current = currentState;
-          setCurrentState('idle');
-          startAutoChange();
-        } else if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
+        if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
           handleThemeChange(-1);
         } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
+          handleThemeChange(1);
+        } else if (e.key === ' ' || e.key === 'Enter') {
+          handleStateChange();
+        }
+      } else if (currentState === 'idle') {
+        if (e.key === 'ArrowLeft' || e.key === 'a') {
+          handleThemeChange(-1);
+        } else if (e.key === 'ArrowRight' || e.key === 'd') {
           handleThemeChange(1);
         }
       }
@@ -116,50 +316,62 @@ const App = () => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentState, currentTheme, isTransitioning]);
+  }, [currentState, currentTheme, isTransitioning, isChatOpen]);
 
-  useEffect(() => {
-    if (currentState === 'idle') {
-      startAutoChange();
-    }
-    return () => {
-      if (autoChangeInterval.current) {
-        clearInterval(autoChangeInterval.current);
-        autoChangeInterval.current = null;
-      }
-    };
-  }, [currentState]);
-
-  // 방향 화살표 렌더링
   const renderDirectionArrows = () => {
-  if (currentState !== 'active') return null;
+    if (currentState !== 'active') return null;
 
-  return (
-    <div className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none">
-      {currentTheme > 0 && (
-        <div className="text-gray-600 animate-pulse">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-        </div>
-      )}
-      <div className="flex-grow" /> {/* 중앙 공간 */}
-      {currentTheme < themeData.length - 1 && (
-        <div className="text-gray-600 animate-pulse">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-          </svg>
-        </div>
-      )}
-    </div>
-  );
-};
+    return (
+      <AnimatePresence mode="wait">
+        {!isChatOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+            className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
+          >
+            {currentTheme > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="text-gray-600 animate-pulse"
+              >
+                <ArrowLeft size={64} strokeWidth={2.5} />
+              </motion.div>
+            )}
+            <div className="flex-grow" />
+            {currentTheme < themes.length - 1 && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="text-gray-600 animate-pulse"
+              >
+                <ArrowRight size={64} strokeWidth={2.5} />
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  };
 
   return (
     <div className="h-screen w-screen relative bg-white">
       <Scene3D 
         currentState={currentState}
         currentTheme={Math.round(currentTheme)}
+        isChatOpen={isChatOpen}
+        themes={themes}
+      />
+      <StartGuide 
+        isVisible={currentState === 'idle' && isViewerPresent && !hasKeyInteraction}
+        currentState={currentState}
+        onKeyInteraction={hasKeyInteraction}
       />
       <ThemeText
         textState={textState}
@@ -169,6 +381,15 @@ const App = () => {
         isTransitioning={isTransitioning}
       />
       {renderDirectionArrows()}
+      <ChatInterface 
+        isOpen={isChatOpen}
+        isClosing={isChatClosing}
+        currentQuestion={themes[Math.round(currentTheme)].question}
+        currentTheme={currentTheme}
+        onClose={handleChatClose}
+        themeColor={themes[Math.round(currentTheme)].color}
+        onInteraction={handleInteraction}
+      />
     </div>
   );
 };
@@ -202,61 +423,197 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\themes.js
 
-const themeData = [
+// themes.js
+const funMemories = [
   {
-    id: 0,
-    color: '#ff4b6b',
-    question: "당신의 가장 소중한 추억은 무엇인가요?",
-    floatingParams: { speed: 1, amplitude: 0.1, phase: 0 }
+    question: "최근에 큰 소리로 웃은 순간이 있나요?",
+    color: '#FF7B7B'
   },
   {
-    id: 1,
-    color: '#ffa94d',
-    question: "어린 시절 가장 행복했던 순간은?",
-    floatingParams: { speed: 0.8, amplitude: 0.15, phase: Math.PI / 3 }
+    question: "친구와 함께한 즐거운 추억을 들려주세요",
+    color: '#FF9B6A'
   },
   {
-    id: 2,
-    color: '#4bc0ff',
-    question: "잊지 못할 첫 만남의 기억이 있나요?",
-    floatingParams: { speed: 1.2, amplitude: 0.12, phase: Math.PI / 1.5 }
+    question: "예상치 못한 즐거운 일이 있었나요?",
+    color: '#FFB55F'
   },
   {
-    id: 3,
-    color: '#9b6dff',
-    question: "가장 그리운 장소는 어디인가요?",
-    floatingParams: { speed: 0.9, amplitude: 0.14, phase: Math.PI / 2 }
+    question: "최근 가장 맛있게 먹은 음식은 무엇인가요?",
+    color: '#FFCC59'
   },
   {
-    id: 4,
-    color: '#4ade80',
-    question: "꿈꾸던 미래의 모습은 어땠나요?",
-    floatingParams: { speed: 1.1, amplitude: 0.13, phase: Math.PI / 2.5 }
+    question: "우연히 발견한 재미있는 것이 있나요?",
+    color: '#FFB86F'
+  },
+  {
+    question: "최근 본 영화나 드라마 중 재미있었던 장면은?",
+    color: '#FFA76F'
+  },
+  {
+    question: "갑자기 웃음이 났던 순간이 있나요?",
+    color: '#FF8E8E'
+  },
+  {
+    question: "친구와 나눈 재미있는 대화가 있나요?",
+    color: '#FFAA7B'
+  },
+  {
+    question: "최근에 받은 예상치 못한 선물이 있나요?",
+    color: '#FF9D6E'
+  },
+  {
+    question: "길거리에서 마주친 재미있는 장면이 있나요?",
+    color: '#FFB57B'
   }
 ];
 
-export default themeData;
+const frustratingMemories = [
+  {
+    question: "최근에 가장 답답했던 순간은 언제인가요?",
+    color: '#7B7BFF'
+  },
+  {
+    question: "누군가에게 하지 못한 말이 있나요?",
+    color: '#6A9BFF'
+  },
+  {
+    question: "시간이 부족하다고 느낀 순간이 있나요?",
+    color: '#5FB5FF'
+  },
+  {
+    question: "최근에 실수한 것 중 아쉬운 게 있나요?",
+    color: '#59CCFF'
+  },
+  {
+    question: "다시 한번 기회가 있다면 하고 싶은 말은?",
+    color: '#6FB8FF'
+  },
+  {
+    question: "오늘 하루 중 가장 힘들었던 순간은?",
+    color: '#6FA7FF'
+  },
+  {
+    question: "최근에 포기한 것이 있다면?",
+    color: '#8E8EFF'
+  },
+  {
+    question: "지금 해결하고 싶은 고민이 있나요?",
+    color: '#7BAAFF'
+  },
+  {
+    question: "누군가에게 사과하고 싶은 마음이 있나요?",
+    color: '#6E9DFF'
+  },
+  {
+    question: "스스로에게 화가 났던 순간이 있나요?",
+    color: '#7BB5FF'
+  }
+];
+
+const contemplativeMemories = [
+  {
+    question: "요즘 자주 떠오르는 생각이 있나요?",
+    color: '#7BFF7B'
+  },
+  {
+    question: "혼자만의 시간에 무엇을 하시나요?",
+    color: '#6AFF9B'
+  },
+  {
+    question: "변화하고 싶은 자신의 모습이 있나요?",
+    color: '#5FFFB5'
+  },
+  {
+    question: "최근에 새롭게 시작한 것이 있나요?",
+    color: '#59FFCC'
+  },
+  {
+    question: "자신의 어떤 모습이 가장 마음에 드나요?",
+    color: '#6FFFB8'
+  },
+  {
+    question: "스스로에게 해주고 싶은 칭찬은?",
+    color: '#6FFFA7'
+  },
+  {
+    question: "요즘 가장 집중하고 있는 것은 무엇인가요?",
+    color: '#8EFF8E'
+  },
+  {
+    question: "미래의 자신에게 하고 싶은 말이 있나요?",
+    color: '#7BFFAA'
+  },
+  {
+    question: "최근에 깨달은 것이 있다면?",
+    color: '#6EFF9D'
+  },
+  {
+    question: "나에게 가장 소중한 가치는 무엇인가요?",
+    color: '#7BFFB5'
+  }
+];
+
+function getRandomItem(array) {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
+function generateThemeData() {
+  return [
+    {
+      id: 0,
+      color: '#ff4b6b',
+      question: "오늘 가장 기억에 남는 순간은 언제인가요?",
+      floatingParams: { speed: 1, amplitude: 0.1, phase: 0 }
+    },
+    {
+      id: 1,
+      ...getRandomItem(funMemories),
+      floatingParams: { speed: 0.8, amplitude: 0.15, phase: Math.PI / 3 }
+    },
+    {
+      id: 2,
+      ...getRandomItem(frustratingMemories),
+      floatingParams: { speed: 1.2, amplitude: 0.12, phase: Math.PI / 1.5 }
+    },
+    {
+      id: 3,
+      ...getRandomItem(contemplativeMemories),
+      floatingParams: { speed: 0.9, amplitude: 0.14, phase: Math.PI / 2 }
+    },
+    {
+      id: 4,
+      color: '#4ade80',
+      question: "전시 중 가장 인상 깊었던 것은?",
+      floatingParams: { speed: 1.1, amplitude: 0.13, phase: Math.PI / 2.5 }
+    }
+  ];
+}
+
+export const initialThemeData = generateThemeData();
+export { generateThemeData };
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\CameraController.jsx
 
-// CameraController.jsx
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 const CameraController = ({ currentState, currentTheme, spacing, centerOffset }) => {
   const { camera } = useThree();
+  const lerpSpeed = 3; // 초당 보간 속도
   
-  useFrame(() => {
+  useFrame((state, delta) => {
     const targetX = (currentTheme * spacing) - centerOffset;
-    const targetY = currentState === 'active' ? 1.3 : 0;
+    const targetY = currentState === 'active' ? 1.42 : 0;
+    const targetZoom = currentState === 'active' ? 500 : 200;
     
-    // 상태에 따라 다른 lerp 속도 적용
-    const xLerpSpeed = currentState === 'active' ? 0.018 : 0.01;
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, xLerpSpeed);
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.014);
+    // deltaTime을 이용한 보간
+    const xDelta = (targetX - camera.position.x) * (currentState === 'active' ? 1.5 : 1.0) * lerpSpeed * delta;
+    const yDelta = (targetY - camera.position.y) * 1.4 * lerpSpeed * delta;
+    const zoomDelta = (targetZoom - camera.zoom) * lerpSpeed * delta;
     
-    const targetZoom = currentState === 'active' ? 500 : 150;
-    camera.zoom = THREE.MathUtils.lerp(camera.zoom, targetZoom, 0.01);
+    camera.position.x += xDelta;
+    camera.position.y += yDelta;
+    camera.zoom += zoomDelta;
     
     camera.rotation.set(0, 0, 0);
     camera.updateProjectionMatrix();
@@ -267,156 +624,494 @@ const CameraController = ({ currentState, currentTheme, spacing, centerOffset })
 
 export default CameraController;
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\ContourEffect.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\ChatInterface.jsx
 
-import React, { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import chatService from '../services/aiChatService';
+import { chatStorageService } from '../services/chatStorageService';
 
-const ContourEffect = ({ color, visible, scale = 1.0 }) => {
-  const material = useRef();
-  const time = useRef(0);
+const LoadingDots = () => (
+  <div className="flex space-x-2 items-center">
+    {[0, 1, 2].map((i) => (
+      <motion.span
+        key={i}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse", delay: i * 0.2 }}
+        className="w-2 h-2 bg-gray-400 rounded-full"
+      />
+    ))}
+  </div>
+);
 
-  useFrame((state, delta) => {
-    if (!visible) return;
-    time.current += delta;
-    if (material.current) {
-      material.current.uniforms.time.value = time.current;
+const ChatMessage = ({ message, isAI, isLoading, distance }) => (
+  <motion.div 
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: Math.max(0.2, 1 - (distance * 0.08)), y: 0 }}
+    exit={{ opacity: 0, y: 20 }}
+    transition={{ duration: 0.3 }}
+    className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-6`}
+  >
+    <div className={`flex items-start gap-4 ${isAI ? 'ml-12 max-w-[70%]' : 'mr-12'}`}>
+      {isAI && (
+        <div className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0">
+          <img src="/images/ai-avatar.png" alt="AI" className="w-full h-full object-cover" />
+        </div>
+      )}
+      <div
+        className={`rounded-2xl px-6 py-4 shadow-[0px_4px_8px_rgba(0,0,0,0.04)] ${
+          isAI ? 'bg-white/80' : 'bg-[#d7d7d7]/70'  
+        } text-base backdrop-blur-[4px]`}
+        style={{ 
+          minHeight: '50px',
+          display: 'flex', 
+          alignItems: 'center', 
+          backdropFilter: 'blur(2px)',
+          maxWidth: '100%',
+          wordBreak: 'break-word',
+          whiteSpace: 'pre-wrap'
+        }}
+      >
+        {isLoading ? <LoadingDots /> : message}
+      </div>
+      {!isAI && (
+        <div className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0">
+          <img src="/images/user-avatar.png" alt="User" className="w-full h-full object-cover" />
+        </div>
+      )}
+    </div>
+  </motion.div>
+);
+
+const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClose, themeColor, onInteraction }) => {
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [conversationCount, setConversationCount] = useState(0);
+  const [isExhibitionEnding, setIsExhibitionEnding] = useState(false);
+  const [isFinalMessage, setIsFinalMessage] = useState(false);
+  const [isClosingSequence, setIsClosingSequence] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState([]);
+  
+  const inputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const isProcessingRef = useRef(false);
+  
+  const MESSAGE_DELAY = 2000;
+
+  const createGradient = (color, type = 'vertical') => {
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+
+    return type === 'vertical'
+      ? `linear-gradient(180deg, 
+          rgba(${r},${g},${b},0.25) 0%,
+          rgba(${r},${g},${b},0.20) 10%,
+          rgba(${r},${g},${b},0.16) 20%,
+          rgba(${r},${g},${b},0.12) 30%,
+          rgba(${r},${g},${b},0.08) 40%,
+          rgba(${r},${g},${b},0.04) 50%,
+          rgba(${r},${g},${b},0.02) 60%,
+          rgba(${r},${g},${b},0) 100%)`
+      : `linear-gradient(90deg,
+          rgba(${r},${g},${b},0.25) 0%,
+          rgba(${r},${g},${b},0.16) 20%,
+          rgba(${r},${g},${b},0.08) 40%,
+          rgba(${r},${g},${b},0.04) 50%,
+          rgba(${r},${g},${b},0.08) 60%,
+          rgba(${r},${g},${b},0.16) 80%,
+          rgba(${r},${g},${b},0.25) 100%)`;
+  };
+
+  const scrollToBottom = () => {
+    if (shouldAutoScroll && messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
-  });
+  };
 
-  const vertexShader = `
-    varying vec3 vPosition;
-    varying vec2 vUv;
+  const handleScroll = () => {
+    if (!messagesContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 10;
+    setShouldAutoScroll(isAtBottom);
+  };
+
+  const resetAllStates = () => {
+    setMessages([]);
+    setInputValue('');
+    setShouldAutoScroll(true);
+    setConversationCount(0);
+    setIsExhibitionEnding(false);
+    setIsFinalMessage(false);
+    setIsClosingSequence(false);
+    setConversationHistory([]);
+    onClose();
+    if (window.resetToIdle) {
+      window.resetToIdle();
+    }
+  };
+
+  const addAIMessage = async (message, showLoading = true, delay = MESSAGE_DELAY) => {
+    if (showLoading) {
+      setMessages(prev => [...prev, { text: '', isAI: true, isLoading: true }]);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      setMessages(prev => prev.filter(msg => !msg.isLoading));
+    }
+    setMessages(prev => [...prev, { text: message, isAI: true }]);
+  };
+
+  const startClosingSequence = async () => {
+    setIsClosingSequence(true);
     
-    void main() {
-      vPosition = position;
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    await addAIMessage("소중한 기억을 나눠주셔서 감사합니다.", true, MESSAGE_DELAY);
+    await addAIMessage("이 순간도 좋은 기억으로 남길 바랍니다.", true, MESSAGE_DELAY);
+    await addAIMessage("안녕히 가세요!", true, MESSAGE_DELAY/2);
+    
+    await addAIMessage(
+      <div className="flex flex-col items-center pt-8 relative">
+        <div className="w-full h-[3px] bg-gradient-to-r from-transparent via-purple-300 to-transparent mb-6"/>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-xl font-semibold mb-2"
+        >
+          <span className="bg-gradient-to-r from-gray-800 via-gray-600 to-gray-800 bg-clip-text text-transparent">
+            Interactive Experience by
+          </span>
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="relative p-3"
+        >
+          <div className="absolute inset-0 rounded-2xl bg-gradient-radial from-rose-100 via-purple-50 to-blue-100 opacity-70" />
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-rose-200/20 via-purple-200/20 to-blue-200/20" />
+          <div className="relative">
+            <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent animate-gradient-x font-bold text-2xl">
+              이승훈
+            </span>
+          </div>
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="text-base mt-2 mb-6 font-medium"
+        >
+          <span className="text-gray-800">
+            자율전공 / 시각디자인 / 23학번
+          </span>
+        </motion.div>
+        <div className="w-full h-[3px] bg-gradient-to-r from-transparent via-purple-300 to-transparent mb-6"/>
+      </div>, 
+      false, 
+      MESSAGE_DELAY
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 7000));
+    resetAllStates();
+  };
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
     }
-  `;
+  }, []);
 
-  const fragmentShader = `
-    uniform float time;
-    uniform vec3 color;
-    uniform float scale;
-    varying vec3 vPosition;
-    varying vec2 vUv;
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-    //	Classic Perlin 3D Noise 
-    //	by Stefan Gustavson
-    vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
-    vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
-    vec3 fade(vec3 t) {return t*t*t*(t*(t*6.0-15.0)+10.0);}
-
-    float cnoise(vec3 P){
-      vec3 Pi0 = floor(P);
-      vec3 Pi1 = Pi0 + vec3(1.0);
-      Pi0 = mod(Pi0, 289.0);
-      Pi1 = mod(Pi1, 289.0);
-      vec3 Pf0 = fract(P);
-      vec3 Pf1 = Pf0 - vec3(1.0);
-      vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
-      vec4 iy = vec4(Pi0.yy, Pi1.yy);
-      vec4 iz0 = Pi0.zzzz;
-      vec4 iz1 = Pi1.zzzz;
-
-      vec4 ixy = permute(permute(ix) + iy);
-      vec4 ixy0 = permute(ixy + iz0);
-      vec4 ixy1 = permute(ixy + iz1);
-
-      vec4 gx0 = ixy0/7.0;
-      vec4 gy0 = fract(floor(gx0)/7.0)-0.5;
-      gx0 = fract(gx0);
-      vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
-      vec4 sz0 = step(gz0, vec4(0.0));
-      gx0 -= sz0 * (step(0.0, gx0) - 0.5);
-      gy0 -= sz0 * (step(0.0, gy0) - 0.5);
-
-      vec4 gx1 = ixy1/7.0;
-      vec4 gy1 = fract(floor(gx1)/7.0)-0.5;
-      gx1 = fract(gx1);
-      vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
-      vec4 sz1 = step(gz1, vec4(0.0));
-      gx1 -= sz1 * (step(0.0, gx1) - 0.5);
-      gy1 -= sz1 * (step(0.0, gy1) - 0.5);
-
-      vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
-      vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
-      vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
-      vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
-      vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
-      vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
-      vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
-      vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
-
-      vec4 norm0 = taylorInvSqrt(vec4(dot(g000, g000), dot(g010, g010), dot(g100, g100), dot(g110, g110)));
-      g000 *= norm0.x;
-      g010 *= norm0.y;
-      g100 *= norm0.z;
-      g110 *= norm0.w;
-      vec4 norm1 = taylorInvSqrt(vec4(dot(g001, g001), dot(g011, g011), dot(g101, g101), dot(g111, g111)));
-      g001 *= norm1.x;
-      g011 *= norm1.y;
-      g101 *= norm1.z;
-      g111 *= norm1.w;
-
-      float n000 = dot(g000, Pf0);
-      float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
-      float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
-      float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
-      float n001 = dot(g001, vec3(Pf0.xy, Pf1.z));
-      float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
-      float n011 = dot(g011, vec3(Pf0.x, Pf1.yz));
-      float n111 = dot(g111, Pf1);
-
-      vec3 fade_xyz = fade(Pf0);
-      vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
-      vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
-      float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x); 
-      return 2.2 * n_xyz;
+  useEffect(() => {
+    if (!isOpen) {
+      setMessages([]);
+      setInputValue('');
+      setShouldAutoScroll(true);
+      return;
     }
 
-    void main() {
-      float n = cnoise(vec3(vUv * scale, time * 0.5));
-      float lines = smoothstep(0.0, 0.1, abs(n));
-      gl_FragColor = vec4(color, (1.0 - lines) * 0.3);
+    const initChat = async () => {
+      if (isProcessingRef.current) return;
+      isProcessingRef.current = true;
+
+      try {
+        setMessages([{ text: "안녕하세요!", isAI: true }]);
+        
+        const firstQuestion = await chatService.getInitialQuestion(currentQuestion);
+        await addAIMessage(firstQuestion, true, MESSAGE_DELAY);
+        setConversationHistory([{ role: "assistant", content: firstQuestion }]);
+      } catch (error) {
+        console.error('Chat initialization error:', error);
+        await addAIMessage(currentQuestion, true, MESSAGE_DELAY);
+      } finally {
+        isProcessingRef.current = false;
+      }
+    };
+
+    initChat();
+    inputRef.current?.focus();
+  }, [isOpen, currentQuestion]);
+
+  const handleInputChange = (e) => {
+    setInputValue(e.target.value);
+    onInteraction?.();  // 타이핑할 때도 상호작용 업데이트
+    
+    if (e.target.value) {
+      const hasTypingMessage = messages.some(msg => msg.isTypingMessage);
+      
+      if (!hasTypingMessage) {
+        setMessages(prev => [...prev, { text: '', isAI: false, isLoading: true, isTypingMessage: true }]);
+      }
+    } else {
+      setMessages(prev => prev.filter(msg => !msg.isTypingMessage));
     }
-  `;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isProcessingRef.current || isClosingSequence) return;
+
+    onInteraction?.();  // 메시지 전송할 때마다 상호작용 업데이트
+    isProcessingRef.current = true;
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+
+    const userMessage = inputValue;
+    setInputValue('');
+    
+    setMessages(prev => {
+      const filteredMessages = prev.filter(msg => !msg.isTypingMessage);
+      return [...filteredMessages, { text: userMessage, isAI: false }];
+    });
+
+    const newHistory = [...conversationHistory, { role: "user", content: userMessage }];
+    setConversationHistory(newHistory);
+
+    if (isFinalMessage) {
+      await startClosingSequence();
+    } else {
+      const newCount = conversationCount + 1;
+      setConversationCount(newCount);
+
+      if (newCount >= 3) {
+        setIsExhibitionEnding(true);
+        setIsFinalMessage(true);
+        await addAIMessage("좋아요~ 아쉽게도 이제 대화를 마무리할 시간이네요.", true, MESSAGE_DELAY);
+        await addAIMessage("다른 작품들도 재미있으니 즐겁게 관람하시길 바랍니다!", true, MESSAGE_DELAY);
+        await addAIMessage("관람 후기에 대한 한 줄 소감 부탁드려요~!", true, MESSAGE_DELAY);
+      } else {
+        const aiResponse = await chatService.sendMessage(
+          userMessage,
+          currentQuestion,
+          newHistory
+        );
+        await addAIMessage(aiResponse, true, MESSAGE_DELAY);
+        setConversationHistory(prev => [...prev, { role: "assistant", content: aiResponse }]);
+      }
+    }
+    
+    isProcessingRef.current = false;
+  };
+
+  if (!isOpen && !isClosing) return null;
 
   return (
-    <mesh visible={visible} position={[0, 0, -1.9]}>
-      <planeGeometry args={[20, 10, 1, 1]} />
-      <shaderMaterial
-        ref={material}
-        vertexShader={vertexShader}
-        fragmentShader={fragmentShader}
-        transparent={true}
-        uniforms={{
-          time: { value: 0 },
-          color: { value: new THREE.Color(color) },
-          scale: { value: scale }
-        }}
-      />
-    </mesh>
+    <AnimatePresence mode="wait">
+      {(isOpen || isClosing) && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <motion.div 
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ 
+                opacity: isClosing ? 0 : 1,
+                y: isClosing ? 100 : 0
+              }}
+              transition={{ 
+                duration: 0.5,
+                ease: "easeInOut"
+              }}
+              className="bg-[#F5F5F5]/70 backdrop-blur-[4px] rounded-[30px] w-[1300px] h-[875px] mx-4 flex flex-col shadow-[0px_0px_20px_5px_rgba(0,0,0,0.07)] relative"
+            >
+              <div 
+                className="absolute inset-0 rounded-[30px] pointer-events-none"
+                style={{
+                  background: createGradient(themeColor),
+                  height: '400px'
+                }}
+              />
+
+              <div 
+                ref={messagesContainerRef}
+                className="flex-1 overflow-y-auto scrollbar-hide flex flex-col"
+                style={{ 
+                  marginTop: '100px',
+                  marginBottom: '80px',
+                  maskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
+                  WebkitMaskImage: 'linear-gradient(to top, black 85%, transparent 100%)'
+                }}
+              >
+                <div className="flex-grow" />
+                {messages.map((msg, idx) => (
+                  <ChatMessage 
+                    key={idx}
+                    message={msg.text}
+                    isAI={msg.isAI}
+                    isLoading={msg.isLoading}
+                    distance={messages.length - idx - 1}
+                  />
+                ))}
+                <div className="flex-grow" />
+              </div>
+
+              <div className="px-8 pb-8 flex justify-center">
+                <div className="w-[1200px] bg-white/70 backdrop-blur-[4px] rounded-xl overflow-hidden shadow-[0px_2px_10px_rgba(0,0,0,0.06)]">
+                  <form onSubmit={handleSubmit} className="h-[50px] p-0">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={inputValue}
+                      onChange={handleInputChange}
+                      onFocus={() => onInteraction?.()} // 입력 포커스 시에도 상호작용 업데이트
+                      disabled={isClosingSequence}
+                      className="w-full h-full px-6 text-base focus:outline-none border-none bg-transparent"
+                      placeholder={isClosingSequence ? "" : "Type your message..."}
+                    />
+                  </form>
+                  <div className="h-[50px] relative">
+                    <div 
+                      className="absolute inset-0"
+                      style={{ background: createGradient(themeColor, 'horizontal') }}
+                    />
+                    <img 
+                      src="/images/brandBar.png"
+                      alt="Brand"
+                      className="w-full h-full object-contain relative z-10 scale-95"
+                    />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 };
 
-export default ContourEffect;
+export default ChatInterface;
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\Scene3D.jsx
 
-import React from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { useMemo, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrthographicCamera } from '@react-three/drei';
+import * as THREE from 'three';
 import ThemeSphere from './ThemeSphere';
 import CameraController from './CameraController';
-import themeData from '../themes';
+import { initialThemeData } from '../themes';  // import 수정
 
-const Scene3D = ({ currentState, currentTheme }) => {
+// 그림자 텍스처 생성
+const createShadowTexture = () => {
+  const canvas = document.createElement('canvas');
+  const size = 128;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  const gradient = ctx.createRadialGradient(
+    size/2, size/2, 0,
+    size/2, size/2, size/2
+  );
+  gradient.addColorStop(0, 'rgba(0,0,0,0.5)');
+  gradient.addColorStop(0.5, 'rgba(0,0,0,0.3)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  const imageData = ctx.getImageData(0, 0, size, size);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const noise = (Math.random() - 0.5) * 15;
+    data[i + 3] = Math.max(0, Math.min(255, data[i + 3] + noise));
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  return canvas;
+};
+
+// 애니메이션이 있는 그림자 스프라이트 컴포넌트
+const AnimatedShadow = React.memo(({ position, isActive, state }) => {
+  const sprite = useRef();
+  const scaleRef = useRef(0.8);
+  const targetScale = isActive ? (state === 'active' ? 1.8 : 1) : 0.6;
+  const positionY = useRef(-0.7);
+
+  const texture = useMemo(() => {
+    const canvas = createShadowTexture();
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  useFrame((_, delta) => {
+    if (!sprite.current) return;
+    
+    const lerpSpeed = 5;
+    
+    // 크기 애니메이션
+    const scaleDelta = (targetScale - scaleRef.current) * lerpSpeed * delta;
+    scaleRef.current += scaleDelta;
+    sprite.current.scale.setScalar(scaleRef.current);
+
+    // y 위치 애니메이션
+    let targetY = -0.3;
+    if (state !== 'active') {
+      const time = _.clock.getElapsedTime();
+      const baseFreq = 0.6;
+      const waveSpeed = 2;
+      const amplitude = 0.1;
+      const wave = Math.sin(time * waveSpeed + position[0] * baseFreq) * amplitude;
+      targetY += wave * 0.9;
+    }
+    
+    const yDelta = (targetY - positionY.current) * lerpSpeed * delta;
+    positionY.current += yDelta;
+    
+    sprite.current.position.set(
+      position[0],
+      positionY.current,
+      position[2] - 0.01
+    );
+  });
+
+  return (
+    <sprite ref={sprite} position={[position[0], positionY.current, position[2] - 0.01]}>
+      <spriteMaterial
+        transparent
+        opacity={isActive ? 0.3 : 0.2}
+        map={texture}
+        depthWrite={false}
+      />
+    </sprite>
+  );
+});
+
+const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialThemeData }) => {  // themes prop 추가 및 기본값 설정
   const spacing = 1.5;
-  const decorationCount = 5;
-  const centerOffset = ((themeData.length - 1) * spacing) / 2;
+  const decorationCount = 3;
+  const centerOffset = ((themes.length - 1) * spacing) / 2;  // themeData를 themes로 변경
   
   const getThemePosition = (index) => [
     index * spacing - centerOffset,
@@ -424,14 +1119,11 @@ const Scene3D = ({ currentState, currentTheme }) => {
     -1
   ];
 
-  // 장식용 구의 위치 생성
   const createDecorationPositions = () => {
     const positions = [];
-    // 왼쪽 장식용 구
     for (let i = 1; i <= decorationCount; i++) {
       positions.push([-centerOffset - (i * spacing), 0, -1]);
     }
-    // 오른쪽 장식용 구
     for (let i = 1; i <= decorationCount; i++) {
       positions.push([centerOffset + (i * spacing), 0, -1]);
     }
@@ -441,14 +1133,19 @@ const Scene3D = ({ currentState, currentTheme }) => {
   const decorationPositions = createDecorationPositions();
 
   return (
-    <Canvas shadows>
+    <Canvas 
+      dpr={[1, 2]}
+      performance={{ min: 0.5 }}
+    >
       <color attach="background" args={['#FFFFFF']} />
+
       <OrthographicCamera 
         makeDefault 
         position={[0, 0, 5]} 
         zoom={150}
         rotation={[0, 0, 0]}
       />
+      
       <CameraController
         currentState={currentState}
         currentTheme={currentTheme}
@@ -456,164 +1153,304 @@ const Scene3D = ({ currentState, currentTheme }) => {
         centerOffset={centerOffset}
       />
       
-      <ambientLight intensity={0.8} />
-      <directionalLight
-        position={[2, 2, 10]}
-        intensity={1}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-15}
-        shadow-camera-right={15}
-        shadow-camera-top={15}
-        shadow-camera-bottom={-15}
-        shadow-camera-near={0.1}
-        shadow-camera-far={30}
-        shadow-radius={10}
-        shadow-bias={-0.001}
-      />
-      <pointLight position={[-5, 5, -5]} intensity={0.3} />
-      
-      <mesh position={[0, -0.7, -2]} receiveShadow>
+      <ambientLight intensity={1.5} />
+      <directionalLight position={[0, 4, 10]} intensity={3} />
+      <directionalLight position={[-3, 3, 5]} intensity={0.4} />
+
+      {/* 배경 평면 */}
+      <mesh position={[0, -0.7, -2]}>
         <planeGeometry args={[50, 50]} />
-        <meshStandardMaterial color="#FFFFFF" />
+        <meshStandardMaterial 
+          color="#FFFFFF"
+          roughness={1}
+          metalness={0}
+        />
       </mesh>
       
-      {/* 장식용 구들 */}
-      {decorationPositions.map((position, i) => (
-        <ThemeSphere
-          key={`decoration-${i}`}
-          position={position}
-          isActive={false}
-          state={currentState}
-          isDecoration={true}
-          color={'#cccccc'}
-        />
-      ))}
+      {/* 장식용 그림자 */}
+      {React.useMemo(() => 
+        decorationPositions.map((position, i) => (
+          <AnimatedShadow
+            key={`decoration-shadow-${i}`}
+            position={position}
+            isActive={false}
+            state={currentState}
+          />
+        ))
+      , [currentState])}
       
-      {/* 테마 구들 */}
-      {themeData.map((theme, i) => (
-        <ThemeSphere
-          key={theme.id}
-          position={getThemePosition(i)}
-          color={theme.color}
-          isActive={Math.round(currentTheme) === i}
-          state={currentState}
-        />
-      ))}
+      {/* 테마 그림자 */}
+      {React.useMemo(() => 
+        themes.map((theme, i) => (
+          <AnimatedShadow
+            key={`theme-shadow-${i}`}
+            position={getThemePosition(i)}
+            isActive={Math.round(currentTheme) === i}
+            state={currentState}
+          />
+        ))
+      , [currentTheme, currentState, themes])}
+      
+      {/* 장식용 구들 */}
+      {React.useMemo(() => 
+        decorationPositions.map((position, i) => (
+          <ThemeSphere
+            key={`decoration-${i}`}
+            position={position}
+            isActive={false}
+            state={currentState}
+            isDecoration={true}
+            color={'#cccccc'}
+          />
+        ))
+      , [currentState])}
+      
+      {React.useMemo(() => 
+        themes.map((theme, i) => (
+          <ThemeSphere
+            key={theme.id}
+            position={getThemePosition(i)}
+            color={theme.color}
+            isActive={Math.round(currentTheme) === i}
+            state={currentState}
+            isChatOpen={isChatOpen}
+          />
+        ))
+      , [currentTheme, currentState, isChatOpen, themes])}
     </Canvas>
   );
 };
 
-export default Scene3D;
+export default React.memo(Scene3D);
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\StartGuide.jsx
+
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { HandMetal, ArrowLeftRight, Star } from 'lucide-react';
+
+const StartGuide = ({ 
+  isVisible, 
+  duration = 8000,
+  onKeyInteraction = false,
+  currentState
+}) => {
+  const [showGuide, setShowGuide] = useState(false);
+
+  useEffect(() => {
+    if (isVisible) {
+      setShowGuide(true);
+      if (!onKeyInteraction) {
+        const timer = setTimeout(() => {
+          setShowGuide(false);
+        }, duration);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      setShowGuide(false);
+    }
+  }, [isVisible, duration, onKeyInteraction, currentState]);
+
+  return (
+    <AnimatePresence mode="wait">
+      {showGuide && (
+        <motion.div 
+          className="fixed inset-0 pointer-events-none"
+          initial={{ opacity: 1 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
+        >
+          {/* Main Guide Content */}
+          <div className="fixed inset-0 flex flex-col justify-between py-32">
+            {/* Welcome Message */}
+            <motion.div
+              className="flex justify-center items-center"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.8 }}
+            >
+              <motion.div
+                className="flex flex-col items-center gap-4"
+                animate={{ opacity: [0.8, 1, 0.8] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <div className="flex items-center gap-4">
+                  <HandMetal size={56} className="text-indigo-500" />
+                  <span className="text-6xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-500 to-pink-500 text-transparent bg-clip-text">
+                    반가워요!
+                  </span>
+                </div>
+                <span className="text-6xl font-extrabold text-gray-800">
+                  이야기 나누러 오셨나요?
+                </span>
+              </motion.div>
+            </motion.div>
+
+            {/* Controls Guide */}
+            <motion.div
+              className="flex justify-center gap-32"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+            >
+              {/* Start Control */}
+              <motion.div
+                className="flex flex-col items-center gap-4"
+                animate={{ opacity: [0.8, 1, 0.8] }}
+                transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
+              >
+                <span className="text-4xl font-black text-gray-800">시작</span>
+                <span className="text-2xl font-bold text-gray-600">스페이스 or 엔터</span>
+              </motion.div>
+
+              {/* Navigation Control */}
+              <motion.div 
+                className="flex flex-col items-center gap-4"
+                animate={{ opacity: [0.8, 1, 0.8] }}
+                transition={{ duration: 2, repeat: Infinity, delay: 0.9 }}
+              >
+                <span className="text-4xl font-black text-gray-800">이동</span>
+                <div className="flex items-center gap-3">
+                  <ArrowLeftRight size={32} className="text-indigo-500" />
+                  <span className="text-2xl font-bold text-gray-600">방향키 or 손 스와이프</span>
+                </div>
+              </motion.div>
+            </motion.div>
+          </div>
+
+          {/* Credits */}
+          <motion.div
+            className="fixed bottom-8 right-10 text-gray-600 flex items-center gap-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.9 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.2 }}
+          >
+            <Star size={24} className="text-yellow-500" />
+            <span className="text-2xl">Powered by</span>
+            <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
+              이승훈
+            </span>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+export default StartGuide;
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\ThemeSphere.jsx
 
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { MeshTransmissionMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 
-const DecorationSphere = ({ position, state }) => {
-  const group = useRef();
-  const scaleRef = useRef(1);
-  const targetScale = 0.8;
+const useSphereAnimation = (group, scaleRef, position, targetScale, state, isActive = false, isChatOpen = false) => {
+  const positionY = useRef(position[1]);
 
-  useFrame(({ clock }) => {
+  useFrame((_, delta) => {
     if (!group.current) return;
     
-    scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, 0.03);
+    const lerpSpeed = 5;
+    
+    const scaleDelta = (targetScale - scaleRef.current) * lerpSpeed * delta;
+    scaleRef.current += scaleDelta;
     group.current.scale.setScalar(scaleRef.current);
     
     let targetY = position[1];
     
-    if (state !== 'active') {
-      const time = clock.getElapsedTime();
+    if (state === 'active' && isActive) {
+      targetY += isChatOpen ? 1.5 : 0.3;
+    } 
+    else if (state !== 'active') {
+      const time = _.clock.getElapsedTime();
       const baseFreq = 0.6;
       const waveSpeed = 2;
       const amplitude = 0.1;
-      
       const wave = Math.sin(time * waveSpeed + position[0] * baseFreq) * amplitude;
       targetY += wave;
     }
     
-    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, targetY, 0.03);
-    group.current.position.x = position[0];
-    group.current.position.z = position[2];
+    const yDelta = (targetY - positionY.current) * (lerpSpeed) * delta;
+    positionY.current += yDelta;
+    
+    group.current.position.set(
+      position[0],
+      positionY.current,
+      position[2]
+    );
   });
+};
+
+const DecorationSphere = ({ position, state }) => {
+  const group = useRef();
+  const scaleRef = useRef(1);
+  
+  useSphereAnimation(group, scaleRef, position, 0.8, state);
 
   return (
     <group ref={group} position={position}>
       <mesh castShadow receiveShadow>
         <sphereGeometry args={[0.4, 64, 64]} />
-        <meshPhysicalMaterial
-          transparent
-          opacity={0.2}
-          roughness={0}
-          transmission={0.95}
-          thickness={0.5}
-          clearcoat={1}
-          clearcoatRoughness={0}
-          ior={1.5}
+        <MeshTransmissionMaterial
+          resolution={512}
+          thickness={0.06}
+          roughness={0.7}
+          clearcoat={0.4}
+          clearcoatRoughness={0.6}
+          transmission={1}
+          ior={2.2}
+          chromaticAberration={0.2}
+          anisotropy={0.7}
+          distortion={0}
+          distortionScale={0}
+          temporalDistortion={0}
+          color="#ffffff"
         />
       </mesh>
       <mesh>
-        <sphereGeometry args={[0.32, 32, 32]} />
+        <sphereGeometry args={[0.32 * 0.8, 32, 32]} />
         <meshStandardMaterial
-          color="#ffffff"
-          roughness={0.6}
-          metalness={0.8}
+          color="#555555"
+          roughness={0.7}
+          metalness={0.9}
         />
       </mesh>
     </group>
   );
 };
 
-
-const ThemeSphereOuter = ({ position, isActive, state, children }) => {
+const ThemeSphereOuter = ({ position, isActive, state, children, isChatOpen }) => {
   const group = useRef();
   const scaleRef = useRef(1);
   const targetScale = isActive ? (state === 'active' ? 1.8 : 1.2) : 0.8;
 
-  useFrame(({ clock }) => {
-    if (!group.current) return;
-    
-    scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, 0.03);
-    group.current.scale.setScalar(scaleRef.current);
-    
-    let targetY = position[1];
-    
-    if (state === 'active' && isActive) {
-      targetY += 0.3;
-    }
-    
-    if (state !== 'active') {
-      const time = clock.getElapsedTime();
-      const baseFreq = 0.6;
-      const waveSpeed = 2;
-      const amplitude = 0.1;
-      
-      const wave = Math.sin(time * waveSpeed + position[0] * baseFreq) * amplitude;
-      targetY += wave;
-    }
-    
-    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, targetY, 0.03);
-    group.current.position.x = position[0];
-    group.current.position.z = position[2];
-  });
+  useSphereAnimation(group, scaleRef, position, targetScale, state, isActive, isChatOpen);
 
   return (
     <group ref={group} position={position}>
       <mesh castShadow receiveShadow>
         <sphereGeometry args={[0.4, 64, 64]} />
-        <meshPhysicalMaterial
-          transparent
-          opacity={0.2}
-          roughness={0}
-          transmission={0.95}
-          thickness={0.5}
-          clearcoat={1}
-          clearcoatRoughness={0}
-          ior={1.5}
+        <MeshTransmissionMaterial
+          samples={16}
+          resolution={512}
+          thickness={0.07}
+          roughness={0.7}
+          clearcoat={0.4}
+          clearcoatRoughness={0.6}
+          transmission={1}
+          ior={2.2}
+          chromaticAberration={0.6}
+          anisotropy={0.7}
+          distortion={8}
+          distortionScale={0.8}
+          temporalDistortion={0.2}
+          color="#ffffff"
         />
       </mesh>
       {children}
@@ -624,26 +1461,25 @@ const ThemeSphereOuter = ({ position, isActive, state, children }) => {
 const ThemeSphereInner = ({ color }) => {
   return (
     <mesh>
-      <sphereGeometry args={[0.32, 32, 32]} />
+      <sphereGeometry args={[0.32 * 0.8, 32, 32]} />
       <meshPhysicalMaterial
         color={color}
         emissive={color}
-        emissiveIntensity={0.5}
-        roughness={0.2}
-        metalness={0.8}
-        clearcoat={1}
+        emissiveIntensity={0.3}
+        roughness={0.7}
+        metalness={0.1}
       />
     </mesh>
   );
 };
 
-const ThemeSphere = ({ position, color, isActive, state, isDecoration = false }) => {
+const ThemeSphere = ({ position, color, isActive, state, isDecoration = false, isChatOpen = false }) => {
   if (isDecoration) {
     return <DecorationSphere position={position} state={state} />;
   }
 
   return (
-    <ThemeSphereOuter position={position} isActive={isActive} state={state}>
+    <ThemeSphereOuter position={position} isActive={isActive} state={state} isChatOpen={isChatOpen}>
       <ThemeSphereInner color={color} />
     </ThemeSphereOuter>
   );
@@ -678,7 +1514,7 @@ const ThemeText = ({
   if (isTransitioning && textState !== 'transitioning') return null;
 
   return (
-    <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-10">
+    <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-[1]">
       <AnimatePresence mode="wait">
         {textState === 'entering' && (
           <motion.div
@@ -734,3 +1570,280 @@ const ThemeText = ({
 };
 
 export default ThemeText;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\services\aiChatService.js
+
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+  dangerouslyAllowBrowser: true
+});
+
+const getSystemPrompt = (theme) => {
+  return `당신은 2024 홍익대학교 산업디자인 졸업전시의 공간반 학생 작품 중 '기억의 순간' 인터랙션 체험존을 담당하는 AI 도슨트입니다.
+
+이 체험존은 관람객의 개인적인 기억과 감정을 끌어내어 전시와 공감대를 형성하는 공간입니다. 
+관람객이 자신의 기억을 자연스럽게 공유할 수 있도록 편안한 대화를 이끌어주세요.
+
+현재 질문 주제는 "${theme}"입니다.
+
+다음 지침을 반드시 따라주세요:
+- 답변은 1-2문장으로 매우 간단히 해주세요
+- 관람객의 기억과 감정에 깊이 공감하되, 짧고 핵심적으로 표현해주세요
+- 개인적인 이야기를 더 많이 끌어낼 수 있는 자연스러운 후속 질문을 해주세요
+- 존댓말을 사용하되, 친근하고 편안한 대화를 해주세요
+- 답변이 너무 길어지지 않도록 주의해주세요
+- 인사는 이미 했습니다
+-"전시회가 시작되었군요!" 같은 말 금지
+
+이 체험존의 목적:
+- 관람객의 개인적인 기억과 감정을 끌어내기
+- 관람객이 자신의 이야기를 편안하게 나눌 수 있는 분위기 만들기`;
+};
+
+const DEFAULT_ERROR_MESSAGE = "죄송합니다. 잠시 후 다시 시도해주세요.";
+
+const chatService = {
+  async sendMessage(message, theme, conversationHistory) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: getSystemPrompt(theme)
+          },
+          ...conversationHistory,
+          {
+            role: "user",
+            content: message
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 150
+      });
+
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('AI Chat Error:', error);
+      return DEFAULT_ERROR_MESSAGE;
+    }
+  },
+
+  async getInitialQuestion(theme) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: getSystemPrompt(theme)
+          },
+          {
+            role: "user",
+            content: "전시회 시작"
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 150
+      });
+
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('AI Chat Error:', error);
+      // 오류 발생 시 기본 질문 반환
+      return `${theme}에 대해 이야기를 나눠볼까요?`;
+    }
+  }
+};
+
+export default chatService;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\services\chatStorageService.js
+
+// services/chatStorageService.js
+export const chatStorageService = {
+  async saveConversation(conversationData) {
+    try {
+      const data = {
+        question: conversationData.question,
+        messages: conversationData.history.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      };
+
+      const response = await fetch('http://localhost:3001/api/save-conversation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save conversation');
+      }
+
+    } catch (error) {
+      console.error('Error saving conversation:', error);
+    }
+  }
+};
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\services\visionService.js
+
+// services/visionService.js
+
+class VisionService {
+  constructor() {
+    this.ws = null;
+    this.isConnected = false;
+    this.onPresenceChange = null;
+    this.onSwipeDetected = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.baseReconnectDelay = 1000;
+    this.isReconnecting = false;
+    this.lastConnectionTime = null;
+  }
+
+  connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+      return;
+    }
+
+    try {
+      this.ws = new WebSocket('ws://localhost:12345');
+      
+      this.ws.onopen = () => {
+        console.log('Vision WebSocket Connected');
+        this.isConnected = true;
+        this.reconnectAttempts = 0;
+        this.lastConnectionTime = Date.now();
+        this.isReconnecting = false;
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Presence 변경 감지
+          if (this.onPresenceChange && 'viewer_present' in data) {
+            this.onPresenceChange(data.viewer_present);
+          }
+
+          // Swipe 제스처 감지
+          if (this.onSwipeDetected && data.swipe_direction) {
+            this.onSwipeDetected(data.swipe_direction);
+          }
+        } catch (error) {
+          console.error('Vision data parse error:', error);
+        }
+      };
+
+      this.ws.onclose = (event) => {
+        console.log('Vision WebSocket Disconnected', event.code, event.reason);
+        this.isConnected = false;
+
+        // 정상적인 종료가 아닌 경우에만 재연결 시도
+        if (!event.wasClean) {
+          this.scheduleReconnect();
+        }
+      };
+
+      this.ws.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        // 오류 발생 시 연결 재시도
+        if (this.ws) {
+          this.ws.close();
+        }
+      };
+
+    } catch (error) {
+      console.error('WebSocket connection error:', error);
+      this.scheduleReconnect();
+    }
+  }
+
+  scheduleReconnect() {
+    if (this.isReconnecting) return;
+
+    this.isReconnecting = true;
+    this.reconnectAttempts++;
+
+    // 지수 백오프를 사용한 재연결 지연 시간 계산
+    const delay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      10000
+    );
+
+    console.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
+
+    setTimeout(() => {
+      if (!this.isConnected) {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+          this.connect();
+        } else {
+          console.log('Max reconnection attempts reached. Resetting connection state...');
+          this.resetConnection();
+        }
+      }
+      this.isReconnecting = false;
+    }, delay);
+  }
+
+  resetConnection() {
+    this.reconnectAttempts = 0;
+    this.isReconnecting = false;
+    this.connect();
+  }
+
+  // 연결 상태 체크 및 필요시 재연결
+  checkConnection() {
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+      this.connect();
+      return false;
+    }
+    
+    // 연결이 오래된 경우 재연결 시도
+    if (this.lastConnectionTime && Date.now() - this.lastConnectionTime > 300000) {
+      console.log('Connection is stale. Reconnecting...');
+      this.disconnect();
+      this.connect();
+      return false;
+    }
+
+    return this.ws.readyState === WebSocket.OPEN;
+  }
+
+  disconnect() {
+    if (this.ws) {
+      try {
+        this.ws.close(1000, "Normal closure");
+      } catch (err) {
+        console.error('Error closing websocket:', err);
+      }
+      this.ws = null;
+      this.isConnected = false;
+    }
+  }
+
+  // 정기적인 연결 상태 체크 시작
+  startConnectionCheck() {
+    setInterval(() => {
+      this.checkConnection();
+    }, 5000);
+  }
+}
+
+// 단일 인스턴스 생성 및 자동 연결 체크 시작
+const visionService = new VisionService();
+visionService.startConnectionCheck();
+
+export default visionService;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\types\aiTypes.js
+

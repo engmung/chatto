@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { MeshTransmissionMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 
-const useSphereAnimation = (group, scaleRef, position, targetScale, state, isActive = false) => {
+const useSphereAnimation = (group, scaleRef, position, targetScale, state, isActive = false, isChatOpen = false) => {
   const positionY = useRef(position[1]);
 
   useFrame((_, delta) => {
@@ -18,7 +18,7 @@ const useSphereAnimation = (group, scaleRef, position, targetScale, state, isAct
     let targetY = position[1];
     
     if (state === 'active' && isActive) {
-      targetY += 0.3;
+      targetY += isChatOpen ? 1.5 : 0.3;
     } 
     else if (state !== 'active') {
       const time = _.clock.getElapsedTime();
@@ -29,7 +29,7 @@ const useSphereAnimation = (group, scaleRef, position, targetScale, state, isAct
       targetY += wave;
     }
     
-    const yDelta = (targetY - positionY.current) * lerpSpeed * delta;
+    const yDelta = (targetY - positionY.current) * (lerpSpeed) * delta;
     positionY.current += yDelta;
     
     group.current.position.set(
@@ -51,19 +51,18 @@ const DecorationSphere = ({ position, state }) => {
       <mesh castShadow receiveShadow>
         <sphereGeometry args={[0.4, 64, 64]} />
         <MeshTransmissionMaterial
-          samples={32}
-          resolution={1024}
-          thickness={0.1}
+          resolution={512}
+          thickness={0.06}
           roughness={0.7}
-          clearcoat={0.2}
-          clearcoatRoughness={0.3}
+          clearcoat={0.4}
+          clearcoatRoughness={0.6}
           transmission={1}
           ior={2.2}
           chromaticAberration={0.2}
           anisotropy={0.7}
-          distortion={0.9}
-          distortionScale={0.8}
-          temporalDistortion={0.2}
+          distortion={0}
+          distortionScale={0}
+          temporalDistortion={0}
           color="#ffffff"
         />
       </mesh>
@@ -79,29 +78,29 @@ const DecorationSphere = ({ position, state }) => {
   );
 };
 
-const ThemeSphereOuter = ({ position, isActive, state, children }) => {
+const ThemeSphereOuter = ({ position, isActive, state, children, isChatOpen }) => {
   const group = useRef();
   const scaleRef = useRef(1);
   const targetScale = isActive ? (state === 'active' ? 1.8 : 1.2) : 0.8;
 
-  useSphereAnimation(group, scaleRef, position, targetScale, state, isActive);
+  useSphereAnimation(group, scaleRef, position, targetScale, state, isActive, isChatOpen);
 
   return (
     <group ref={group} position={position}>
       <mesh castShadow receiveShadow>
         <sphereGeometry args={[0.4, 64, 64]} />
         <MeshTransmissionMaterial
-          samples={32}
-          resolution={1024}
-          thickness={0.1}
+          samples={16}
+          resolution={512}
+          thickness={0.07}
           roughness={0.7}
-          clearcoat={0.2}
-          clearcoatRoughness={0.3}
+          clearcoat={0.4}
+          clearcoatRoughness={0.6}
           transmission={1}
           ior={2.2}
           chromaticAberration={0.6}
           anisotropy={0.7}
-          distortion={0.9}
+          distortion={8}
           distortionScale={0.8}
           temporalDistortion={0.2}
           color="#ffffff"
@@ -127,13 +126,13 @@ const ThemeSphereInner = ({ color }) => {
   );
 };
 
-const ThemeSphere = ({ position, color, isActive, state, isDecoration = false }) => {
+const ThemeSphere = ({ position, color, isActive, state, isDecoration = false, isChatOpen = false }) => {
   if (isDecoration) {
     return <DecorationSphere position={position} state={state} />;
   }
 
   return (
-    <ThemeSphereOuter position={position} isActive={isActive} state={state}>
+    <ThemeSphereOuter position={position} isActive={isActive} state={state} isChatOpen={isChatOpen}>
       <ThemeSphereInner color={color} />
     </ThemeSphereOuter>
   );
