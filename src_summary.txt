@@ -8,6 +8,9 @@ Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도�
 Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\types
 
 
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\utils
+
+
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\App.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -16,9 +19,11 @@ import Scene3D from './components/Scene3D';
 import ThemeText from './components/ThemeText';
 import ChatInterface from './components/ChatInterface';
 import StartGuide from './components/StartGuide';
+import BackgroundMusic from './components/BackgroundMusic';
 import { initialThemeData, generateThemeData } from './themes';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import visionService from './services/visionService';
+import { sounds } from './utils/soundEffects';
 
 const App = () => {
   const [currentState, setCurrentState] = useState('idle');
@@ -35,6 +40,7 @@ const App = () => {
   const [hasKeyInteraction, setHasKeyInteraction] = useState(false);
   const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
   const [isActive, setIsActive] = useState(false);
+  const [hasUserInteraction, setHasUserInteraction] = useState(false);
 
   const autoChangeInterval = useRef(null);
   const bounceAnimationRef = useRef(null);
@@ -139,6 +145,7 @@ const App = () => {
   window.resetToIdle = startIdleMode;
 
   const handleReset = () => {
+    sounds.reset();
     setIsChatOpen(false);
     setIsChatClosing(true);
     setTimeout(() => {
@@ -169,6 +176,7 @@ const App = () => {
         return;
       }
       
+      sounds.move();
       handleInteraction();
       
       if (currentState === 'active') {
@@ -195,29 +203,33 @@ const App = () => {
 
   const handleStateChange = () => {
     setHasKeyInteraction(true);
+    sounds.select();
     
     if (currentState === 'active') {
       setIsChatOpen(true);
     } else {
-      setIsActive(true);
-      setCurrentState('active');
-      setCurrentText(themes[Math.round(currentTheme)].question);
-      setTextState('entering');
-      
       setTimeout(() => {
-        setTextState('active');
-      }, 1150);
+        setIsActive(true);
+        setCurrentState('active');
+        setCurrentText(themes[Math.round(currentTheme)].question);
+        setTextState('entering');
+        
+        setTimeout(() => {
+          setTextState('active');
+        }, 1150);
 
-      if (autoChangeInterval.current) {
-        clearInterval(autoChangeInterval.current);
-        autoChangeInterval.current = null;
-      }
+        if (autoChangeInterval.current) {
+          clearInterval(autoChangeInterval.current);
+          autoChangeInterval.current = null;
+        }
+      }, );
     }
     
     handleInteraction();
   };
 
   const handleChatClose = () => {
+    sounds.close();
     setIsChatClosing(true);
     setIsChatOpen(false);
     setTimeout(() => {
@@ -234,7 +246,6 @@ const App = () => {
           setHasKeyInteraction(false);
           startGuideTimer();
         } else {
-          // 사용자가 돌아왔을 때 타이머 초기화
           lastInactiveTime.current = null;
           if (inactivityTimerRef.current) {
             clearTimeout(inactivityTimerRef.current);
@@ -257,7 +268,6 @@ const App = () => {
     return () => visionService.disconnect();
   }, [currentState, isChatOpen, isActive]);
 
-  // 주기적으로 비활성 상태 체크
   useEffect(() => {
     const checkInterval = setInterval(() => {
       if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
@@ -284,6 +294,7 @@ const App = () => {
   useEffect(() => {
     const handleKeyPress = (e) => {
       handleInteraction();
+      setHasUserInteraction(true); // 사용자 상호작용 감지
 
       if (e.key === 'Escape') {
         if (isChatOpen) {
@@ -362,6 +373,13 @@ const App = () => {
 
   return (
     <div className="h-screen w-screen relative bg-white">
+      <BackgroundMusic 
+        currentState={currentState}
+        isChatOpen={isChatOpen}
+        volume={0.5}
+        fadeTime={1000}
+        hasInteraction={hasUserInteraction}
+      />
       <Scene3D 
         currentState={currentState}
         currentTheme={Math.round(currentTheme)}
@@ -592,6 +610,101 @@ function generateThemeData() {
 export const initialThemeData = generateThemeData();
 export { generateThemeData };
 
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\BackgroundMusic.jsx
+
+import React, { useEffect, useRef, useState } from 'react';
+
+const BackgroundMusic = ({ 
+  currentState, 
+  isChatOpen,
+  volume = 0.5,
+  fadeTime = 1000,
+  hasInteraction = false 
+}) => {
+  const audioContextRef = useRef(null);
+  const gainNodeRef = useRef(null);
+  const sourceNodeRef = useRef(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // AudioContext 초기화 및 오디오 재생 설정
+  const initializeAudio = async () => {
+    if (isInitialized || !hasInteraction) return;
+
+    try {
+      // AudioContext 생성
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // GainNode 설정
+      gainNodeRef.current = audioContextRef.current.createGain();
+      gainNodeRef.current.connect(audioContextRef.current.destination);
+      gainNodeRef.current.gain.value = 0; // 초기 볼륨 0
+
+      // 오디오 파일 로드
+      const response = await fetch('/audio/background.wav');
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+
+      // 소스 노드 생성 및 재생
+      sourceNodeRef.current = audioContextRef.current.createBufferSource();
+      sourceNodeRef.current.buffer = audioBuffer;
+      sourceNodeRef.current.loop = true;
+      sourceNodeRef.current.connect(gainNodeRef.current);
+      sourceNodeRef.current.start(0);
+
+      // 볼륨 페이드 인
+      const now = audioContextRef.current.currentTime;
+      gainNodeRef.current.gain.setValueAtTime(0, now);
+      gainNodeRef.current.gain.linearRampToValueAtTime(volume * 0.6, now + 2);
+
+      setIsInitialized(true);
+    } catch (error) {
+      console.error('Error initializing audio:', error);
+    }
+  };
+
+  // 사용자 상호작용 감지 시 초기화
+  useEffect(() => {
+    if (hasInteraction && !isInitialized) {
+      initializeAudio();
+    }
+  }, [hasInteraction]);
+
+  // 상태에 따른 볼륨 조절
+  useEffect(() => {
+    if (!gainNodeRef.current || !isInitialized) return;
+
+    let targetVolume = 0;
+
+    if (currentState === 'idle') {
+      targetVolume = volume * 0.6;
+    } else if (currentState === 'active') {
+      targetVolume = isChatOpen ? volume * 0.3 : volume;
+    }
+
+    const now = audioContextRef.current.currentTime;
+    gainNodeRef.current.gain.linearRampToValueAtTime(
+      targetVolume,
+      now + (fadeTime / 1000)
+    );
+  }, [currentState, isChatOpen, volume, fadeTime, isInitialized]);
+
+  // 클린업
+  useEffect(() => {
+    return () => {
+      if (sourceNodeRef.current) {
+        sourceNodeRef.current.stop();
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  return null;
+};
+
+export default BackgroundMusic;
+
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\CameraController.jsx
 
 import { useFrame, useThree } from '@react-three/fiber';
@@ -628,8 +741,10 @@ File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\�
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Minus, X, Percent } from 'lucide-react';
 import chatService from '../services/aiChatService';
 import { chatStorageService } from '../services/chatStorageService';
+import { sounds } from '../utils/soundEffects';
 
 const LoadingDots = () => (
   <div className="flex space-x-2 items-center">
@@ -646,46 +761,95 @@ const LoadingDots = () => (
   </div>
 );
 
-const ChatMessage = ({ message, isAI, isLoading, distance }) => (
-  <motion.div 
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: Math.max(0.2, 1 - (distance * 0.08)), y: 0 }}
-    exit={{ opacity: 0, y: 20 }}
-    transition={{ duration: 0.3 }}
-    className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-6`}
-  >
-    <div className={`flex items-start gap-4 ${isAI ? 'ml-12 max-w-[70%]' : 'mr-12'}`}>
-      {isAI && (
-        <div className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0">
-          <img src="/images/ai-avatar.png" alt="AI" className="w-full h-full object-cover" />
-        </div>
-      )}
-      <div
-        className={`rounded-2xl px-6 py-4 shadow-[0px_4px_8px_rgba(0,0,0,0.04)] ${
-          isAI ? 'bg-white/80' : 'bg-[#d7d7d7]/70'  
-        } text-base backdrop-blur-[4px]`}
-        style={{ 
-          minHeight: '50px',
-          display: 'flex', 
-          alignItems: 'center', 
-          backdropFilter: 'blur(2px)',
-          maxWidth: '100%',
-          wordBreak: 'break-word',
-          whiteSpace: 'pre-wrap'
-        }}
-      >
-        {isLoading ? <LoadingDots /> : message}
-      </div>
-      {!isAI && (
-        <div className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0">
-          <img src="/images/user-avatar.png" alt="User" className="w-full h-full object-cover" />
-        </div>
-      )}
-    </div>
-  </motion.div>
-);
+// 아이콘 목록
+const ICONS = [Plus, Minus, X, Percent];
 
-const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClose, themeColor, onInteraction }) => {
+// 랜덤 색상 생성 함수
+const getRandomColor = () => {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsla(${hue}, 85%, 85%, 0.7)`;
+};
+
+const ChatMessage = React.memo(({ message, isAI, isLoading, distance, themeColor }) => {
+  const IconComponent = React.useMemo(() => 
+    ICONS[Math.floor(Math.random() * ICONS.length)],
+    []
+  );
+
+  const backgroundColor = React.useMemo(() => {
+    if (isAI) {
+      const color = themeColor.replace('#', '');
+      const r = parseInt(color.substr(0, 2), 16);
+      const g = parseInt(color.substr(2, 2), 16);
+      const b = parseInt(color.substr(4, 2), 16);
+      return `rgba(${r}, ${g}, ${b}, 0.15)`;
+    }
+    return getRandomColor();
+  }, [isAI, themeColor]);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: Math.max(0.2, 1 - (distance * 0.08)), y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      transition={{ duration: 0.3 }}
+      className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-6`}
+    >
+      <div className={`flex items-start gap-4 ${isAI ? 'ml-12 max-w-[70%]' : 'mr-12'}`}>
+        {isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+        <div
+          className={`rounded-2xl px-6 py-4 shadow-[0px_4px_8px_rgba(0,0,0,0.04)] ${
+            isAI ? 'bg-white/80' : 'bg-[#d7d7d7]/70'  
+          } text-base backdrop-blur-[4px]`}
+          style={{ 
+            minHeight: '50px',
+            display: 'flex', 
+            alignItems: 'center', 
+            backdropFilter: 'blur(2px)',
+            maxWidth: '100%',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {isLoading ? <LoadingDots /> : message}
+        </div>
+        {!isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
+const ChatInterface = ({ 
+  isOpen, 
+  isClosing, 
+  currentQuestion, 
+  currentTheme, 
+  onClose, 
+  themeColor, 
+  onInteraction 
+}) => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -694,7 +858,20 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
   const [isFinalMessage, setIsFinalMessage] = useState(false);
   const [isClosingSequence, setIsClosingSequence] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
+  const [sessionIcons] = useState(() => {
+  const aiIconIndex = Math.floor(Math.random() * ICONS.length);
+  let userIconIndex;
+  do {
+    userIconIndex = Math.floor(Math.random() * ICONS.length);
+  } while (userIconIndex === aiIconIndex); // AI와 다른 아이콘이 선택될 때까지 반복
+
+  return {
+    ai: aiIconIndex,
+    user: userIconIndex
+  };
+  });
   
+
   const inputRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -762,15 +939,18 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
       await new Promise(resolve => setTimeout(resolve, delay));
       setMessages(prev => prev.filter(msg => !msg.isLoading));
     }
+    sounds.aiMessage();
     setMessages(prev => [...prev, { text: message, isAI: true }]);
   };
 
-  const startClosingSequence = async () => {
+  const playEndingSequence = async () => {
     setIsClosingSequence(true);
     
     await addAIMessage("소중한 기억을 나눠주셔서 감사합니다.", true, MESSAGE_DELAY);
     await addAIMessage("이 순간도 좋은 기억으로 남길 바랍니다.", true, MESSAGE_DELAY);
     await addAIMessage("안녕히 가세요!", true, MESSAGE_DELAY/2);
+    
+    sounds.special();
     
     await addAIMessage(
       <div className="flex flex-col items-center pt-8 relative">
@@ -862,7 +1042,7 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
 
   const handleInputChange = (e) => {
     setInputValue(e.target.value);
-    onInteraction?.();  // 타이핑할 때도 상호작용 업데이트
+    onInteraction?.();
     
     if (e.target.value) {
       const hasTypingMessage = messages.some(msg => msg.isTypingMessage);
@@ -879,7 +1059,7 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     e.preventDefault();
     if (!inputValue.trim() || isProcessingRef.current || isClosingSequence) return;
 
-    onInteraction?.();  // 메시지 전송할 때마다 상호작용 업데이트
+    onInteraction?.();
     isProcessingRef.current = true;
     
     if (typingTimeoutRef.current) {
@@ -890,6 +1070,8 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     const userMessage = inputValue;
     setInputValue('');
     
+    sounds.userMessage();
+    
     setMessages(prev => {
       const filteredMessages = prev.filter(msg => !msg.isTypingMessage);
       return [...filteredMessages, { text: userMessage, isAI: false }];
@@ -899,7 +1081,7 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     setConversationHistory(newHistory);
 
     if (isFinalMessage) {
-      await startClosingSequence();
+      await playEndingSequence();
     } else {
       const newCount = conversationCount + 1;
       setConversationCount(newCount);
@@ -963,14 +1145,17 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
               >
                 <div className="flex-grow" />
                 {messages.map((msg, idx) => (
-                  <ChatMessage 
-                    key={idx}
-                    message={msg.text}
-                    isAI={msg.isAI}
-                    isLoading={msg.isLoading}
-                    distance={messages.length - idx - 1}
-                  />
-                ))}
+  <ChatMessage 
+    key={idx}
+    message={msg.text}
+    isAI={msg.isAI}
+    isLoading={msg.isLoading}
+    distance={messages.length - idx - 1}
+    themeColor={themeColor}
+    iconType={msg.isAI ? sessionIcons.ai : sessionIcons.user}
+
+  />
+))}
                 <div className="flex-grow" />
               </div>
 
@@ -982,7 +1167,7 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
                       type="text"
                       value={inputValue}
                       onChange={handleInputChange}
-                      onFocus={() => onInteraction?.()} // 입력 포커스 시에도 상호작용 업데이트
+                      onFocus={() => onInteraction?.()}
                       disabled={isClosingSequence}
                       className="w-full h-full px-6 text-base focus:outline-none border-none bg-transparent"
                       placeholder={isClosingSequence ? "" : "Type your message..."}
@@ -1010,6 +1195,91 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
 };
 
 export default ChatInterface;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\ChatMessage.jsx
+
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Plus, Minus, X, Percent } from 'lucide-react';
+
+const ICONS = [Plus, Minus, X, Percent];
+
+const getDistinctIconPair = () => {
+  // 0부터 3까지의 숫자 중 랜덤하게 하나 선택 (AI용)
+  const aiIconIndex = Math.floor(Math.random() * ICONS.length);
+  
+  // 남은 숫자들 중에서 랜덤하게 하나 선택 (사용자용)
+  let userIconIndex;
+  do {
+    userIconIndex = Math.floor(Math.random() * ICONS.length);
+  } while (userIconIndex === aiIconIndex);
+  
+  return {
+    aiIcon: ICONS[aiIconIndex],
+    userIcon: ICONS[userIconIndex]
+  };
+};
+
+const ChatMessage = React.memo(({ message, isAI, isLoading, distance, themeColor, iconType, userColor }) => {
+  const IconComponent = ICONS[iconType];
+  const backgroundColor = isAI ? 
+    `rgba(${themeColor.replace('#', '').match(/.{2}/g).map(x => parseInt(x, 16)).join(', ')}, 0.15)` : 
+    white;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: Math.max(0.2, 1 - (distance * 0.08)), y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      transition={{ duration: 0.3 }}
+      className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-6`}
+    >
+      <div className={`flex items-start gap-4 ${isAI ? 'ml-12 max-w-[70%]' : 'mr-12'}`}>
+        {isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+        <div className={`rounded-2xl px-6 py-4 shadow-[0px_4px_8px_rgba(0,0,0,0.04)] ${
+          isAI ? 'bg-white/80' : 'bg-[#d7d7d7]/70'  
+        } text-base backdrop-blur-[4px]`}
+          style={{ 
+            minHeight: '50px',
+            display: 'flex', 
+            alignItems: 'center', 
+            backdropFilter: 'blur(2px)',
+            maxWidth: '100%',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {isLoading ? <LoadingDots /> : message}
+        </div>
+        {!isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
+export default React.memo(ChatMessage);
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\components\Scene3D.jsx
 
@@ -1228,6 +1498,29 @@ File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\�
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { HandMetal, ArrowLeftRight, Star } from 'lucide-react';
+import { sounds } from '../utils/soundEffects';
+
+const FIRST_GREETINGS = [
+  "반가워요!",
+  "안녕하세요!",
+  "환영합니다!",
+  "어서오세요!",
+  "만나서 반가워요!",
+  "좋은 하루예요!",
+];
+
+const SECOND_GREETINGS = [
+  "이야기 나누러 오셨나요?",
+  "오늘 하루는 어떠셨나요?",
+  "잠시 쉬어가시겠어요?",
+  "특별한 순간을 공유해주세요",
+  "기억에 남는 순간이 있나요?",
+  "함께 이야기를 나눠볼까요?",
+  "편하게 이야기해주세요",
+  "여기서 잠시 머물러보세요",
+  "당신의 이야기가 궁금해요",
+  "무슨 이야기를 들려주실 건가요?"
+];
 
 const StartGuide = ({ 
   isVisible, 
@@ -1236,10 +1529,39 @@ const StartGuide = ({
   currentState
 }) => {
   const [showGuide, setShowGuide] = useState(false);
+  const [firstGreeting, setFirstGreeting] = useState(FIRST_GREETINGS[0]);
+  const [secondGreeting, setSecondGreeting] = useState(SECOND_GREETINGS[0]);
+  const [exitFast, setExitFast] = useState(false);
+  const [hasPlayedWelcome, setHasPlayedWelcome] = useState(false);
+
+  const selectNewGreetings = () => {
+    const newFirstGreeting = FIRST_GREETINGS[Math.floor(Math.random() * FIRST_GREETINGS.length)];
+    const newSecondGreeting = SECOND_GREETINGS[Math.floor(Math.random() * SECOND_GREETINGS.length)];
+    
+    if (newFirstGreeting === firstGreeting && FIRST_GREETINGS.length > 1) {
+      selectNewGreetings();
+      return;
+    }
+    if (newSecondGreeting === secondGreeting && SECOND_GREETINGS.length > 1) {
+      selectNewGreetings();
+      return;
+    }
+
+    setFirstGreeting(newFirstGreeting);
+    setSecondGreeting(newSecondGreeting);
+  };
 
   useEffect(() => {
     if (isVisible) {
       setShowGuide(true);
+      setExitFast(false);
+      
+      // 가이드가 처음 나타날 때만 효과음 재생
+      if (!hasPlayedWelcome) {
+        sounds.welcome();
+        setHasPlayedWelcome(true);
+      }
+
       if (!onKeyInteraction) {
         const timer = setTimeout(() => {
           setShowGuide(false);
@@ -1247,29 +1569,39 @@ const StartGuide = ({
         return () => clearTimeout(timer);
       }
     } else {
+      // 키 상호작용으로 인한 종료인 경우 빠른 종료 설정
+      setExitFast(onKeyInteraction);
       setShowGuide(false);
+      
+      // 가이드가 사라질 때 hasPlayedWelcome 초기화
+      if (!isVisible && hasPlayedWelcome) {
+        setHasPlayedWelcome(false);
+      }
     }
-  }, [isVisible, duration, onKeyInteraction, currentState]);
+  }, [isVisible, duration, onKeyInteraction, currentState, hasPlayedWelcome]);
+
+  const exitDuration = exitFast ? 0.25 : 0.5;  // 빠른 종료시 0.25초, 일반 종료시 0.5초
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence 
+      mode="wait"
+      onExitComplete={selectNewGreetings}
+    >
       {showGuide && (
         <motion.div 
           className="fixed inset-0 pointer-events-none"
           initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.5, ease: "easeInOut" }}
+          transition={{ duration: exitDuration, ease: "easeInOut" }}
         >
-          {/* Main Guide Content */}
           <div className="fixed inset-0 flex flex-col justify-between py-32">
-            {/* Welcome Message */}
             <motion.div
               className="flex justify-center items-center"
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.8 }}
+              transition={{ duration: exitDuration + 0.3 }}
             >
               <motion.div
                 className="flex flex-col items-center gap-4"
@@ -1279,24 +1611,22 @@ const StartGuide = ({
                 <div className="flex items-center gap-4">
                   <HandMetal size={56} className="text-indigo-500" />
                   <span className="text-6xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-500 to-pink-500 text-transparent bg-clip-text">
-                    반가워요!
+                    {firstGreeting}
                   </span>
                 </div>
                 <span className="text-6xl font-extrabold text-gray-800">
-                  이야기 나누러 오셨나요?
+                  {secondGreeting}
                 </span>
               </motion.div>
             </motion.div>
 
-            {/* Controls Guide */}
             <motion.div
               className="flex justify-center gap-32"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              transition={{ duration: 0.8, delay: 0.2 }}
+              transition={{ duration: exitDuration + 0.3, delay: 0.2 }}
             >
-              {/* Start Control */}
               <motion.div
                 className="flex flex-col items-center gap-4"
                 animate={{ opacity: [0.8, 1, 0.8] }}
@@ -1306,7 +1636,6 @@ const StartGuide = ({
                 <span className="text-2xl font-bold text-gray-600">스페이스 or 엔터</span>
               </motion.div>
 
-              {/* Navigation Control */}
               <motion.div 
                 className="flex flex-col items-center gap-4"
                 animate={{ opacity: [0.8, 1, 0.8] }}
@@ -1314,27 +1643,26 @@ const StartGuide = ({
               >
                 <span className="text-4xl font-black text-gray-800">이동</span>
                 <div className="flex items-center gap-3">
-                  <ArrowLeftRight size={32} className="text-indigo-500" />
-                  <span className="text-2xl font-bold text-gray-600">방향키 or 손 스와이프</span>
+                  <ArrowLeftRight size={32} className="text-gray-600" />
+                  <span className="text-2xl font-bold text-gray-600">방향키</span>
                 </div>
               </motion.div>
             </motion.div>
-          </div>
 
-          {/* Credits */}
-          <motion.div
-            className="fixed bottom-8 right-10 text-gray-600 flex items-center gap-3"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.9 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1.2 }}
-          >
-            <Star size={24} className="text-yellow-500" />
-            <span className="text-2xl">Powered by</span>
-            <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
-              이승훈
-            </span>
-          </motion.div>
+            <motion.div
+              className="fixed bottom-8 right-10 text-gray-600 flex items-center gap-3"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.9 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: exitDuration + 0.7 }}
+            >
+              <Star size={24} className="text-yellow-500" />
+              <span className="text-2xl">Powered by</span>
+              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
+                이승훈
+              </span>
+            </motion.div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
@@ -1694,14 +2022,11 @@ export const chatStorageService = {
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\services\visionService.js
 
-// services/visionService.js
-
 class VisionService {
   constructor() {
     this.ws = null;
     this.isConnected = false;
     this.onPresenceChange = null;
-    this.onSwipeDetected = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.baseReconnectDelay = 1000;
@@ -1733,11 +2058,6 @@ class VisionService {
           if (this.onPresenceChange && 'viewer_present' in data) {
             this.onPresenceChange(data.viewer_present);
           }
-
-          // Swipe 제스처 감지
-          if (this.onSwipeDetected && data.swipe_direction) {
-            this.onSwipeDetected(data.swipe_direction);
-          }
         } catch (error) {
           console.error('Vision data parse error:', error);
         }
@@ -1747,7 +2067,6 @@ class VisionService {
         console.log('Vision WebSocket Disconnected', event.code, event.reason);
         this.isConnected = false;
 
-        // 정상적인 종료가 아닌 경우에만 재연결 시도
         if (!event.wasClean) {
           this.scheduleReconnect();
         }
@@ -1755,7 +2074,6 @@ class VisionService {
 
       this.ws.onerror = (error) => {
         console.error('WebSocket Error:', error);
-        // 오류 발생 시 연결 재시도
         if (this.ws) {
           this.ws.close();
         }
@@ -1773,7 +2091,6 @@ class VisionService {
     this.isReconnecting = true;
     this.reconnectAttempts++;
 
-    // 지수 백오프를 사용한 재연결 지연 시간 계산
     const delay = Math.min(
       this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
       10000
@@ -1787,7 +2104,7 @@ class VisionService {
           console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
           this.connect();
         } else {
-          console.log('Max reconnection attempts reached. Resetting connection state...');
+          console.log('Max reconnection attempts reached');
           this.resetConnection();
         }
       }
@@ -1799,24 +2116,6 @@ class VisionService {
     this.reconnectAttempts = 0;
     this.isReconnecting = false;
     this.connect();
-  }
-
-  // 연결 상태 체크 및 필요시 재연결
-  checkConnection() {
-    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-      this.connect();
-      return false;
-    }
-    
-    // 연결이 오래된 경우 재연결 시도
-    if (this.lastConnectionTime && Date.now() - this.lastConnectionTime > 300000) {
-      console.log('Connection is stale. Reconnecting...');
-      this.disconnect();
-      this.connect();
-      return false;
-    }
-
-    return this.ws.readyState === WebSocket.OPEN;
   }
 
   disconnect() {
@@ -1831,15 +2130,15 @@ class VisionService {
     }
   }
 
-  // 정기적인 연결 상태 체크 시작
   startConnectionCheck() {
     setInterval(() => {
-      this.checkConnection();
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+        this.connect();
+      }
     }, 5000);
   }
 }
 
-// 단일 인스턴스 생성 및 자동 연결 체크 시작
 const visionService = new VisionService();
 visionService.startConnectionCheck();
 
@@ -1847,3 +2146,54 @@ export default visionService;
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\types\aiTypes.js
 
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\utils\soundEffects.js
+
+// utils/soundEffects.js
+const playSound = (soundName, volume = 1.0) => {
+  try {
+    const audio = new Audio(`/audio/${soundName}.wav`);
+    audio.volume = volume;
+    
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(error => {
+        console.error('Error playing sound:', error);
+      });
+    }
+
+    audio.onended = () => {
+      audio.remove();
+    };
+  } catch (error) {
+    console.error('Error creating audio:', error);
+  }
+};
+
+export const sounds = {
+  // 기본 인터페이스 효과음
+  move: () => playSound('move', 0.5),        // 테마 이동 시
+  select: () => playSound('select', 0.6),    // 테마 선택 시
+  reset: () => playSound('reset', 0.4),      // 초기화/리셋 시
+  close: () => playSound('close', 0.5),      // 채팅창 닫기 시
+  welcome: () => playSound('welcome', 0.6),  // 시작 가이드 표시 시
+  
+  // 채팅 메시지 효과음
+  userMessage: () => playSound('user', 0.45),  // 사용자 메시지 전송 시
+  aiMessage: () => playSound('ai', 0.45),      // AI 응답 시
+  
+  // 특별 효과음
+  special: () => playSound('special', 0.8)     // 엔딩 시퀀스용
+};
+
+export const playSequence = async (soundNames, interval = 200) => {
+  for (let i = 0; i < soundNames.length; i++) {
+    const soundName = soundNames[i];
+    if (sounds[soundName]) {
+      sounds[soundName]();
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+  }
+};
+
+export default sounds;

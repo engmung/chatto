@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Minus, X, Percent } from 'lucide-react';
 import chatService from '../services/aiChatService';
 import { chatStorageService } from '../services/chatStorageService';
+import { sounds } from '../utils/soundEffects';
 
 const LoadingDots = () => (
   <div className="flex space-x-2 items-center">
@@ -18,46 +20,100 @@ const LoadingDots = () => (
   </div>
 );
 
-const ChatMessage = ({ message, isAI, isLoading, distance }) => (
-  <motion.div 
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: Math.max(0.2, 1 - (distance * 0.08)), y: 0 }}
-    exit={{ opacity: 0, y: 20 }}
-    transition={{ duration: 0.3 }}
-    className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-6`}
-  >
-    <div className={`flex items-start gap-4 ${isAI ? 'ml-12 max-w-[70%]' : 'mr-12'}`}>
-      {isAI && (
-        <div className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0">
-          <img src="/images/ai-avatar.png" alt="AI" className="w-full h-full object-cover" />
-        </div>
-      )}
-      <div
-        className={`rounded-2xl px-6 py-4 shadow-[0px_4px_8px_rgba(0,0,0,0.04)] ${
-          isAI ? 'bg-white/80' : 'bg-[#d7d7d7]/70'  
-        } text-base backdrop-blur-[4px]`}
-        style={{ 
-          minHeight: '50px',
-          display: 'flex', 
-          alignItems: 'center', 
-          backdropFilter: 'blur(2px)',
-          maxWidth: '100%',
-          wordBreak: 'break-word',
-          whiteSpace: 'pre-wrap'
-        }}
-      >
-        {isLoading ? <LoadingDots /> : message}
-      </div>
-      {!isAI && (
-        <div className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0">
-          <img src="/images/user-avatar.png" alt="User" className="w-full h-full object-cover" />
-        </div>
-      )}
-    </div>
-  </motion.div>
-);
+const getSessionStyling = () => {
+  const ICONS = [Plus, Minus, X, Percent];
+  const aiIconIndex = Math.floor(Math.random() * ICONS.length);
+  let userIconIndex;
+  do {
+    userIconIndex = Math.floor(Math.random() * ICONS.length);
+  } while (userIconIndex === aiIconIndex);
+  
+  const hue = Math.floor(Math.random() * 360);
+  const userColor = `hsla(${hue}, 85%, 85%, 0.7)`;
+  
+  return {
+    aiIcon: ICONS[aiIconIndex],
+    userIcon: ICONS[userIconIndex],
+    userColor,
+  };
+};
 
-const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClose, themeColor, onInteraction }) => {
+const ChatMessage = React.memo(({ 
+  message, 
+  isAI, 
+  isLoading, 
+  distance, 
+  themeColor,
+  sessionStyling 
+}) => {
+  const IconComponent = isAI ? sessionStyling.aiIcon : sessionStyling.userIcon;
+  const backgroundColor = isAI 
+    ? `rgba(${themeColor.replace('#', '').match(/.{2}/g).map(x => parseInt(x, 16)).join(', ')}, 0.15)` 
+    : sessionStyling.userColor;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: Math.max(0.2, 1 - (distance * 0.08)), y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      transition={{ duration: 0.3 }}
+      className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-6`}
+    >
+      <div className={`flex items-start gap-4 ${isAI ? 'ml-12 max-w-[70%]' : 'mr-12'}`}>
+        {isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+        <div
+          className={`rounded-2xl px-6 py-4 shadow-[0px_4px_8px_rgba(0,0,0,0.04)] ${
+            isAI ? 'bg-white/80' : 'bg-[#d7d7d7]/70'  
+          } text-base backdrop-blur-[4px]`}
+          style={{ 
+            minHeight: '50px',
+            display: 'flex', 
+            alignItems: 'center', 
+            backdropFilter: 'blur(2px)',
+            maxWidth: '100%',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {isLoading ? <LoadingDots /> : message}
+        </div>
+        {!isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
+const ChatInterface = ({ 
+  isOpen, 
+  isClosing, 
+  currentQuestion, 
+  currentTheme, 
+  onClose, 
+  themeColor, 
+  onInteraction 
+}) => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -66,13 +122,30 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
   const [isFinalMessage, setIsFinalMessage] = useState(false);
   const [isClosingSequence, setIsClosingSequence] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
-  
+  const [sessionStyling] = useState(getSessionStyling);
+
   const inputRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const isProcessingRef = useRef(false);
   
   const MESSAGE_DELAY = 2000;
+
+  const resetChatState = () => {
+    setMessages([]);
+    setInputValue('');
+    setShouldAutoScroll(true);
+    setConversationCount(0);
+    setIsExhibitionEnding(false);
+    setIsFinalMessage(false);
+    setIsClosingSequence(false);
+    setConversationHistory([]);
+    isProcessingRef.current = false;
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  };
 
   const createGradient = (color, type = 'vertical') => {
     const hex = color.replace('#', '');
@@ -113,36 +186,24 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     setShouldAutoScroll(isAtBottom);
   };
 
-  const resetAllStates = () => {
-    setMessages([]);
-    setInputValue('');
-    setShouldAutoScroll(true);
-    setConversationCount(0);
-    setIsExhibitionEnding(false);
-    setIsFinalMessage(false);
-    setIsClosingSequence(false);
-    setConversationHistory([]);
-    onClose();
-    if (window.resetToIdle) {
-      window.resetToIdle();
-    }
-  };
-
   const addAIMessage = async (message, showLoading = true, delay = MESSAGE_DELAY) => {
     if (showLoading) {
       setMessages(prev => [...prev, { text: '', isAI: true, isLoading: true }]);
       await new Promise(resolve => setTimeout(resolve, delay));
       setMessages(prev => prev.filter(msg => !msg.isLoading));
     }
+    sounds.aiMessage();
     setMessages(prev => [...prev, { text: message, isAI: true }]);
   };
 
-  const startClosingSequence = async () => {
+  const playEndingSequence = async () => {
     setIsClosingSequence(true);
     
     await addAIMessage("소중한 기억을 나눠주셔서 감사합니다.", true, MESSAGE_DELAY);
     await addAIMessage("이 순간도 좋은 기억으로 남길 바랍니다.", true, MESSAGE_DELAY);
     await addAIMessage("안녕히 가세요!", true, MESSAGE_DELAY/2);
+    
+    sounds.special();
     
     await addAIMessage(
       <div className="flex flex-col items-center pt-8 relative">
@@ -187,8 +248,38 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     );
 
     await new Promise(resolve => setTimeout(resolve, 7000));
-    resetAllStates();
+    resetChatState();
+    onClose();
+    if (window.resetToIdle) {
+      window.resetToIdle();
+    }
   };
+
+  // 채팅이 닫힐 때 상태 초기화
+  useEffect(() => {
+    if (!isOpen && !isClosing) {
+      resetChatState();
+    }
+  }, [isOpen, isClosing]);
+
+  // 테마 변경 시 대화 상태 초기화
+  useEffect(() => {
+    if (isOpen) {
+      resetChatState();
+      const initChat = async () => {
+        try {
+          setMessages([{ text: "안녕하세요!", isAI: true }]);
+          const firstQuestion = await chatService.getInitialQuestion(currentQuestion);
+          await addAIMessage(firstQuestion, true, MESSAGE_DELAY);
+          setConversationHistory([{ role: "assistant", content: firstQuestion }]);
+        } catch (error) {
+          console.error('Chat initialization error:', error);
+          await addAIMessage(currentQuestion, true, MESSAGE_DELAY);
+        }
+      };
+      initChat();
+    }
+  }, [currentTheme, isOpen]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -202,43 +293,12 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     scrollToBottom();
   }, [messages]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      setMessages([]);
-      setInputValue('');
-      setShouldAutoScroll(true);
-      return;
-    }
-
-    const initChat = async () => {
-      if (isProcessingRef.current) return;
-      isProcessingRef.current = true;
-
-      try {
-        setMessages([{ text: "안녕하세요!", isAI: true }]);
-        
-        const firstQuestion = await chatService.getInitialQuestion(currentQuestion);
-        await addAIMessage(firstQuestion, true, MESSAGE_DELAY);
-        setConversationHistory([{ role: "assistant", content: firstQuestion }]);
-      } catch (error) {
-        console.error('Chat initialization error:', error);
-        await addAIMessage(currentQuestion, true, MESSAGE_DELAY);
-      } finally {
-        isProcessingRef.current = false;
-      }
-    };
-
-    initChat();
-    inputRef.current?.focus();
-  }, [isOpen, currentQuestion]);
-
   const handleInputChange = (e) => {
     setInputValue(e.target.value);
-    onInteraction?.();  // 타이핑할 때도 상호작용 업데이트
+    onInteraction?.();
     
     if (e.target.value) {
       const hasTypingMessage = messages.some(msg => msg.isTypingMessage);
-      
       if (!hasTypingMessage) {
         setMessages(prev => [...prev, { text: '', isAI: false, isLoading: true, isTypingMessage: true }]);
       }
@@ -251,7 +311,7 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     e.preventDefault();
     if (!inputValue.trim() || isProcessingRef.current || isClosingSequence) return;
 
-    onInteraction?.();  // 메시지 전송할 때마다 상호작용 업데이트
+    onInteraction?.();
     isProcessingRef.current = true;
     
     if (typingTimeoutRef.current) {
@@ -262,6 +322,8 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     const userMessage = inputValue;
     setInputValue('');
     
+    sounds.userMessage();
+    
     setMessages(prev => {
       const filteredMessages = prev.filter(msg => !msg.isTypingMessage);
       return [...filteredMessages, { text: userMessage, isAI: false }];
@@ -271,7 +333,7 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     setConversationHistory(newHistory);
 
     if (isFinalMessage) {
-      await startClosingSequence();
+      await playEndingSequence();
     } else {
       const newCount = conversationCount + 1;
       setConversationCount(newCount);
@@ -294,6 +356,17 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
     }
     
     isProcessingRef.current = false;
+  };
+
+  const handleChatClose = () => {
+    sounds.close();
+    setIsChatClosing(true);
+    setIsChatOpen(false);
+    
+    setTimeout(() => {
+      setIsChatClosing(false);
+      resetChatState();
+    }, 500);
   };
 
   if (!isOpen && !isClosing) return null;
@@ -341,6 +414,8 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
                     isAI={msg.isAI}
                     isLoading={msg.isLoading}
                     distance={messages.length - idx - 1}
+                    themeColor={themeColor}
+                    sessionStyling={sessionStyling}
                   />
                 ))}
                 <div className="flex-grow" />
@@ -354,7 +429,7 @@ const ChatInterface = ({ isOpen, isClosing, currentQuestion, currentTheme, onClo
                       type="text"
                       value={inputValue}
                       onChange={handleInputChange}
-                      onFocus={() => onInteraction?.()} // 입력 포커스 시에도 상호작용 업데이트
+                      onFocus={() => onInteraction?.()}
                       disabled={isClosingSequence}
                       className="w-full h-full px-6 text-base focus:outline-none border-none bg-transparent"
                       placeholder={isClosingSequence ? "" : "Type your message..."}

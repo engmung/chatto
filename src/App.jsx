@@ -4,9 +4,11 @@ import Scene3D from './components/Scene3D';
 import ThemeText from './components/ThemeText';
 import ChatInterface from './components/ChatInterface';
 import StartGuide from './components/StartGuide';
+import BackgroundMusic from './components/BackgroundMusic';
 import { initialThemeData, generateThemeData } from './themes';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import visionService from './services/visionService';
+import { sounds } from './utils/soundEffects';
 
 const App = () => {
   const [currentState, setCurrentState] = useState('idle');
@@ -23,6 +25,7 @@ const App = () => {
   const [hasKeyInteraction, setHasKeyInteraction] = useState(false);
   const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
   const [isActive, setIsActive] = useState(false);
+  const [hasUserInteraction, setHasUserInteraction] = useState(false);
 
   const autoChangeInterval = useRef(null);
   const bounceAnimationRef = useRef(null);
@@ -32,20 +35,20 @@ const App = () => {
   const lastInactiveTime = useRef(null);
 
   const clearAllTimers = () => {
-    if (autoChangeInterval.current) {
-      clearInterval(autoChangeInterval.current);
-      autoChangeInterval.current = null;
-    }
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-      inactivityTimerRef.current = null;
-    }
-    if (guideTimerRef.current) {
-      clearTimeout(guideTimerRef.current);
-      guideTimerRef.current = null;
-    }
-    lastInactiveTime.current = null;
-  };
+  if (autoChangeInterval.current) {
+    clearInterval(autoChangeInterval.current);
+    autoChangeInterval.current = null;
+  }
+  if (inactivityTimerRef.current) {
+    clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = null;
+  }
+  if (guideTimerRef.current) {
+    clearTimeout(guideTimerRef.current);
+    guideTimerRef.current = null;
+  }
+  lastInactiveTime.current = null;
+};
 
   const startGuideTimer = () => {
     if (guideTimerRef.current) {
@@ -60,31 +63,31 @@ const App = () => {
   };
 
   const checkAndResetInactivity = () => {
-    if (!isViewerPresent && lastInactiveTime.current) {
-      const currentTime = Date.now();
-      const inactiveTime = currentTime - lastInactiveTime.current;
-      const timeout = isChatOpen ? 10000 : 7000;
+  if (!isViewerPresent && lastInactiveTime.current) {
+    const currentTime = Date.now();
+    const inactiveTime = currentTime - lastInactiveTime.current;
+    const timeout = isChatOpen ? 10000 : 7000;
 
-      if (inactiveTime >= timeout) {
-        handleReset();
-      }
+    if (inactiveTime >= timeout) {
+      handleReset();
     }
-  };
+  }
+};
 
   const startInactivityTimer = () => {
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-    }
+  if (inactivityTimerRef.current) {
+    clearTimeout(inactivityTimerRef.current);
+  }
 
-    if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
-      lastInactiveTime.current = Date.now();
+  if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+    lastInactiveTime.current = Date.now();
 
-      const timeout = isChatOpen ? 10000 : 7000;
-      inactivityTimerRef.current = setTimeout(() => {
-        checkAndResetInactivity();
-      }, timeout);
-    }
-  };
+    const timeout = isChatOpen ? 10000 : 7000;
+    inactivityTimerRef.current = setTimeout(() => {
+      handleReset();  // checkAndResetInactivity 대신 직접 handleReset 호출
+    }, timeout);
+  }
+};
 
   const startAutoChange = () => {
     if (autoChangeInterval.current) {
@@ -114,26 +117,29 @@ const App = () => {
   };
 
   const startIdleMode = () => {
-    clearAllTimers();
-    setCurrentState('idle');
-    setTextState('none');
-    setThemes(generateThemeData());
-    setCurrentTheme(0);
-    setHasKeyInteraction(false);
-    setIsActive(false);
-    startAutoChange();
-  };
+  clearAllTimers();
+  setCurrentState('idle');
+  setTextState('none');
+  setThemes(generateThemeData());
+  setCurrentTheme(0);
+  setHasKeyInteraction(false);
+  setIsActive(false);
+  startAutoChange();
+};
 
   window.resetToIdle = startIdleMode;
 
   const handleReset = () => {
-    setIsChatOpen(false);
-    setIsChatClosing(true);
-    setTimeout(() => {
-      setIsChatClosing(false);
-      startIdleMode();
-    }, 500);
-  };
+  sounds.reset();
+  setIsChatOpen(false);
+  setIsChatClosing(true);
+
+  // 채팅 인터페이스 애니메이션 완료 후 상태 리셋
+  setTimeout(() => {
+    setIsChatClosing(false);
+    startIdleMode();
+  }, 500);  // 채팅창 닫힘 애니메이션과 동일한 시간
+};
 
   const handleInteraction = () => {
     setLastInteractionTime(Date.now());
@@ -157,6 +163,7 @@ const App = () => {
         return;
       }
       
+      sounds.move();
       handleInteraction();
       
       if (currentState === 'active') {
@@ -183,29 +190,33 @@ const App = () => {
 
   const handleStateChange = () => {
     setHasKeyInteraction(true);
+    sounds.select();
     
     if (currentState === 'active') {
       setIsChatOpen(true);
     } else {
-      setIsActive(true);
-      setCurrentState('active');
-      setCurrentText(themes[Math.round(currentTheme)].question);
-      setTextState('entering');
-      
       setTimeout(() => {
-        setTextState('active');
-      }, 1150);
+        setIsActive(true);
+        setCurrentState('active');
+        setCurrentText(themes[Math.round(currentTheme)].question);
+        setTextState('entering');
+        
+        setTimeout(() => {
+          setTextState('active');
+        }, 1150);
 
-      if (autoChangeInterval.current) {
-        clearInterval(autoChangeInterval.current);
-        autoChangeInterval.current = null;
-      }
+        if (autoChangeInterval.current) {
+          clearInterval(autoChangeInterval.current);
+          autoChangeInterval.current = null;
+        }
+      }, );
     }
     
     handleInteraction();
   };
 
   const handleChatClose = () => {
+    sounds.close();
     setIsChatClosing(true);
     setIsChatOpen(false);
     setTimeout(() => {
@@ -222,7 +233,6 @@ const App = () => {
           setHasKeyInteraction(false);
           startGuideTimer();
         } else {
-          // 사용자가 돌아왔을 때 타이머 초기화
           lastInactiveTime.current = null;
           if (inactivityTimerRef.current) {
             clearTimeout(inactivityTimerRef.current);
@@ -245,7 +255,6 @@ const App = () => {
     return () => visionService.disconnect();
   }, [currentState, isChatOpen, isActive]);
 
-  // 주기적으로 비활성 상태 체크
   useEffect(() => {
     const checkInterval = setInterval(() => {
       if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
@@ -257,10 +266,10 @@ const App = () => {
   }, [isViewerPresent, currentState, isChatOpen]);
 
   useEffect(() => {
-    if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
-      startInactivityTimer();
-    }
-  }, [isViewerPresent, currentState, isChatOpen]);
+  if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+    startInactivityTimer();
+  }
+}, [isViewerPresent, currentState, isChatOpen]);
 
   useEffect(() => {
     if (currentState === 'idle') {
@@ -270,41 +279,40 @@ const App = () => {
   }, [currentState]);
 
   useEffect(() => {
-    const handleKeyPress = (e) => {
-      handleInteraction();
+  const handleKeyPress = (e) => {
+    handleInteraction();
+    setHasUserInteraction(true);
 
-      if (e.key === 'Escape') {
-        if (isChatOpen) {
-          handleChatClose();
-        } else if (currentState === 'active') {
-          handleReset();
-        }
+    if (e.key === 'Escape') {
+      if (isChatOpen || currentState === 'active') {
+        handleReset();
       }
-      
-      if (isChatOpen) return;
+    }
+    
+    if (isChatOpen) return;
 
-      if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
+    if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
+      handleStateChange();
+    } else if (currentState === 'active') {
+      if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
+        handleThemeChange(-1);
+      } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
+        handleThemeChange(1);
+      } else if (e.key === ' ' || e.key === 'Enter') {
         handleStateChange();
-      } else if (currentState === 'active') {
-        if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
-          handleThemeChange(-1);
-        } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
-          handleThemeChange(1);
-        } else if (e.key === ' ' || e.key === 'Enter') {
-          handleStateChange();
-        }
-      } else if (currentState === 'idle') {
-        if (e.key === 'ArrowLeft' || e.key === 'a') {
-          handleThemeChange(-1);
-        } else if (e.key === 'ArrowRight' || e.key === 'd') {
-          handleThemeChange(1);
-        }
       }
-    };
+    } else if (currentState === 'idle') {
+      if (e.key === 'ArrowLeft' || e.key === 'a') {
+        handleThemeChange(-1);
+      } else if (e.key === 'ArrowRight' || e.key === 'd') {
+        handleThemeChange(1);
+      }
+    }
+  };
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentState, currentTheme, isTransitioning, isChatOpen]);
+  window.addEventListener('keydown', handleKeyPress);
+  return () => window.removeEventListener('keydown', handleKeyPress);
+}, [currentState, currentTheme, isTransitioning, isChatOpen]);
 
   const renderDirectionArrows = () => {
     if (currentState !== 'active') return null;
@@ -350,6 +358,13 @@ const App = () => {
 
   return (
     <div className="h-screen w-screen relative bg-white">
+      <BackgroundMusic 
+        currentState={currentState}
+        isChatOpen={isChatOpen}
+        volume={0.5}
+        fadeTime={1000}
+        hasInteraction={hasUserInteraction}
+      />
       <Scene3D 
         currentState={currentState}
         currentTheme={Math.round(currentTheme)}

@@ -1,11 +1,8 @@
-// services/visionService.js
-
 class VisionService {
   constructor() {
     this.ws = null;
     this.isConnected = false;
     this.onPresenceChange = null;
-    this.onSwipeDetected = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.baseReconnectDelay = 1000;
@@ -37,11 +34,6 @@ class VisionService {
           if (this.onPresenceChange && 'viewer_present' in data) {
             this.onPresenceChange(data.viewer_present);
           }
-
-          // Swipe 제스처 감지
-          if (this.onSwipeDetected && data.swipe_direction) {
-            this.onSwipeDetected(data.swipe_direction);
-          }
         } catch (error) {
           console.error('Vision data parse error:', error);
         }
@@ -51,7 +43,6 @@ class VisionService {
         console.log('Vision WebSocket Disconnected', event.code, event.reason);
         this.isConnected = false;
 
-        // 정상적인 종료가 아닌 경우에만 재연결 시도
         if (!event.wasClean) {
           this.scheduleReconnect();
         }
@@ -59,7 +50,6 @@ class VisionService {
 
       this.ws.onerror = (error) => {
         console.error('WebSocket Error:', error);
-        // 오류 발생 시 연결 재시도
         if (this.ws) {
           this.ws.close();
         }
@@ -77,7 +67,6 @@ class VisionService {
     this.isReconnecting = true;
     this.reconnectAttempts++;
 
-    // 지수 백오프를 사용한 재연결 지연 시간 계산
     const delay = Math.min(
       this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
       10000
@@ -91,7 +80,7 @@ class VisionService {
           console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
           this.connect();
         } else {
-          console.log('Max reconnection attempts reached. Resetting connection state...');
+          console.log('Max reconnection attempts reached');
           this.resetConnection();
         }
       }
@@ -103,24 +92,6 @@ class VisionService {
     this.reconnectAttempts = 0;
     this.isReconnecting = false;
     this.connect();
-  }
-
-  // 연결 상태 체크 및 필요시 재연결
-  checkConnection() {
-    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-      this.connect();
-      return false;
-    }
-    
-    // 연결이 오래된 경우 재연결 시도
-    if (this.lastConnectionTime && Date.now() - this.lastConnectionTime > 300000) {
-      console.log('Connection is stale. Reconnecting...');
-      this.disconnect();
-      this.connect();
-      return false;
-    }
-
-    return this.ws.readyState === WebSocket.OPEN;
   }
 
   disconnect() {
@@ -135,15 +106,15 @@ class VisionService {
     }
   }
 
-  // 정기적인 연결 상태 체크 시작
   startConnectionCheck() {
     setInterval(() => {
-      this.checkConnection();
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+        this.connect();
+      }
     }, 5000);
   }
 }
 
-// 단일 인스턴스 생성 및 자동 연결 체크 시작
 const visionService = new VisionService();
 visionService.startConnectionCheck();
 
