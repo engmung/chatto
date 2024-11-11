@@ -17,7 +17,14 @@ export default {
         '4xl': ['3rem', { lineHeight: '3.5rem' }],         // 48px
         '5xl': ['3.75rem', { lineHeight: '4rem' }],        // 60px
         '6xl': ['4.5rem', { lineHeight: '4.5rem' }],       // 72px
-        '7xl': ['5.25rem', { lineHeight: '5.25rem' }],     // 84px
+      '7xl': ['5.25rem', { lineHeight: '5.25rem' }],     // 84px
+        //  맥용
+        // 'base': '1.125rem',
+        // 'lg': '1.25rem',
+        // 'xl': '1.375rem',
+        // '2xl': '1.625rem',
+        // '4xl': '2.25rem',
+        // '6xl': '3.375rem',
       },animation: {
         'gradient-x': 'gradient-x 3s ease infinite',
       },
