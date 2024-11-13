@@ -50,20 +50,20 @@ const App = () => {
   const lastInactiveTime = useRef(null);
 
   const clearAllTimers = () => {
-    if (autoChangeInterval.current) {
-      clearInterval(autoChangeInterval.current);
-      autoChangeInterval.current = null;
-    }
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-      inactivityTimerRef.current = null;
-    }
-    if (guideTimerRef.current) {
-      clearTimeout(guideTimerRef.current);
-      guideTimerRef.current = null;
-    }
-    lastInactiveTime.current = null;
-  };
+  if (autoChangeInterval.current) {
+    clearInterval(autoChangeInterval.current);
+    autoChangeInterval.current = null;
+  }
+  if (inactivityTimerRef.current) {
+    clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = null;
+  }
+  if (guideTimerRef.current) {
+    clearTimeout(guideTimerRef.current);
+    guideTimerRef.current = null;
+  }
+  lastInactiveTime.current = null;
+};
 
   const startGuideTimer = () => {
     if (guideTimerRef.current) {
@@ -78,31 +78,31 @@ const App = () => {
   };
 
   const checkAndResetInactivity = () => {
-    if (!isViewerPresent && lastInactiveTime.current) {
-      const currentTime = Date.now();
-      const inactiveTime = currentTime - lastInactiveTime.current;
-      const timeout = isChatOpen ? 10000 : 7000;
+  if (!isViewerPresent && lastInactiveTime.current) {
+    const currentTime = Date.now();
+    const inactiveTime = currentTime - lastInactiveTime.current;
+    const timeout = isChatOpen ? 10000 : 7000;
 
-      if (inactiveTime >= timeout) {
-        handleReset();
-      }
+    if (inactiveTime >= timeout) {
+      handleReset();
     }
-  };
+  }
+};
 
   const startInactivityTimer = () => {
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-    }
+  if (inactivityTimerRef.current) {
+    clearTimeout(inactivityTimerRef.current);
+  }
 
-    if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
-      lastInactiveTime.current = Date.now();
+  if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+    lastInactiveTime.current = Date.now();
 
-      const timeout = isChatOpen ? 10000 : 7000;
-      inactivityTimerRef.current = setTimeout(() => {
-        checkAndResetInactivity();
-      }, timeout);
-    }
-  };
+    const timeout = isChatOpen ? 10000 : 7000;
+    inactivityTimerRef.current = setTimeout(() => {
+      handleReset();  // checkAndResetInactivity 대신 직접 handleReset 호출
+    }, timeout);
+  }
+};
 
   const startAutoChange = () => {
     if (autoChangeInterval.current) {
@@ -132,27 +132,29 @@ const App = () => {
   };
 
   const startIdleMode = () => {
-    clearAllTimers();
-    setCurrentState('idle');
-    setTextState('none');
-    setThemes(generateThemeData());
-    setCurrentTheme(0);
-    setHasKeyInteraction(false);
-    setIsActive(false);
-    startAutoChange();
-  };
+  clearAllTimers();
+  setCurrentState('idle');
+  setTextState('none');
+  setThemes(generateThemeData());
+  setCurrentTheme(0);
+  setHasKeyInteraction(false);
+  setIsActive(false);
+  startAutoChange();
+};
 
   window.resetToIdle = startIdleMode;
 
   const handleReset = () => {
-    sounds.reset();
-    setIsChatOpen(false);
-    setIsChatClosing(true);
-    setTimeout(() => {
-      setIsChatClosing(false);
-      startIdleMode();
-    }, 500);
-  };
+  sounds.reset();
+  setIsChatOpen(false);
+  setIsChatClosing(true);
+
+  // 채팅 인터페이스 애니메이션 완료 후 상태 리셋
+  setTimeout(() => {
+    setIsChatClosing(false);
+    startIdleMode();
+  }, 500);  // 채팅창 닫힘 애니메이션과 동일한 시간
+};
 
   const handleInteraction = () => {
     setLastInteractionTime(Date.now());
@@ -168,38 +170,45 @@ const App = () => {
   };
 
   const handleThemeChange = (changeDirection) => {
-    if ((currentState === 'active' || currentState === 'idle') && 
-        !bounceAnimationRef.current && !isTransitioning) {
-      const nextTheme = currentTheme + changeDirection;
-      
-      if (nextTheme < 0 || nextTheme >= themes.length) {
-        return;
-      }
-      
-      sounds.move();
-      handleInteraction();
-      
-      if (currentState === 'active') {
-        setIsTransitioning(true);
-        setPreviousText(currentText);
-        setCurrentText(themes[nextTheme].question);
-        setTextState('transitioning');
-      }
-      
-      setCurrentTheme(nextTheme);
-
-      if (currentState === 'active') {
-        setTimeout(() => {
-          setTextState('active');
-          setIsTransitioning(false);
-        }, 900);
-      }
-
-      if (currentState === 'idle') {
-        startAutoChange();
-      }
+  if ((currentState === 'active' || currentState === 'idle') && 
+      !bounceAnimationRef.current && !isTransitioning) {
+    const nextTheme = currentTheme + changeDirection;
+    
+    if (nextTheme < 0 || nextTheme >= themes.length) {
+      return;
     }
-  };
+    
+    // 비전 처리 일시 중지
+    visionService.suspend();
+    
+    sounds.move();
+    handleInteraction();
+    
+    if (currentState === 'active') {
+      setIsTransitioning(true);
+      setPreviousText(currentText);
+      setCurrentText(themes[nextTheme].question);
+      setTextState('transitioning');
+    }
+    
+    setCurrentTheme(nextTheme);
+
+    const resumeTimeout = setTimeout(() => {
+      if (currentState === 'active') {
+        setTextState('active');
+        setIsTransitioning(false);
+      }
+      visionService.resume();
+    }, 900);
+
+    if (currentState === 'idle') {
+      startAutoChange();
+      clearTimeout(resumeTimeout);
+      visionService.resume();
+    }
+  }
+};
+
 
   const handleStateChange = () => {
     setHasKeyInteraction(true);
@@ -238,35 +247,41 @@ const App = () => {
   };
 
   // Vision Service 효과
-  useEffect(() => {
-    visionService.onPresenceChange = (present) => {
-      setIsViewerPresent(present);
-      if (present) {
-        if (currentState === 'idle') {
-          setHasKeyInteraction(false);
-          startGuideTimer();
-        } else {
-          lastInactiveTime.current = null;
-          if (inactivityTimerRef.current) {
-            clearTimeout(inactivityTimerRef.current);
-            inactivityTimerRef.current = null;
-          }
+  // useEffect 내부
+useEffect(() => {
+  let mounted = true;
+
+  visionService.onPresenceChange = (present) => {
+    if (!mounted) return;
+    
+    setIsViewerPresent(present);
+    if (present) {
+      if (currentState === 'idle') {
+        setHasKeyInteraction(false);
+        startGuideTimer();
+      } else {
+        lastInactiveTime.current = null;
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+          inactivityTimerRef.current = null;
         }
-      } else if (isActive || isChatOpen) {
-        startInactivityTimer();
       }
-    };
+    } else if (isActive || isChatOpen) {
+      startInactivityTimer();
+    }
+  };
 
-    visionService.onSwipeDetected = (direction) => {
-      if ((currentState === 'active' || currentState === 'idle') && !isChatOpen) {
-        handleInteraction();
-        handleThemeChange(direction === 'left' ? -1 : 1);
-      }
-    };
+  // Connect vision service
+  visionService.connect().catch((error) => {
+    console.warn('Failed to initialize vision:', error);
+  });
 
-    visionService.connect();
-    return () => visionService.disconnect();
-  }, [currentState, isChatOpen, isActive]);
+  // Cleanup
+  return () => {
+    mounted = false;
+    visionService.disconnect();
+  };
+}, []); // Empty dependency array
 
   useEffect(() => {
     const checkInterval = setInterval(() => {
@@ -279,10 +294,10 @@ const App = () => {
   }, [isViewerPresent, currentState, isChatOpen]);
 
   useEffect(() => {
-    if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
-      startInactivityTimer();
-    }
-  }, [isViewerPresent, currentState, isChatOpen]);
+  if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+    startInactivityTimer();
+  }
+}, [isViewerPresent, currentState, isChatOpen]);
 
   useEffect(() => {
     if (currentState === 'idle') {
@@ -292,58 +307,58 @@ const App = () => {
   }, [currentState]);
 
   useEffect(() => {
-    const handleKeyPress = (e) => {
-      handleInteraction();
-      setHasUserInteraction(true); // 사용자 상호작용 감지
+  const handleKeyPress = (e) => {
+    handleInteraction();
+    setHasUserInteraction(true);
 
-      if (e.key === 'Escape') {
-        if (isChatOpen) {
-          handleChatClose();
-        } else if (currentState === 'active') {
-          handleReset();
-        }
+    if (e.key === 'Escape') {
+      if (isChatOpen || currentState === 'active') {
+        handleReset();
       }
-      
-      if (isChatOpen) return;
+    }
+    
+    if (isChatOpen) return;
 
-      if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
+    if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
+      handleStateChange();
+    } else if (currentState === 'active') {
+      if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
+        handleThemeChange(-1);
+      } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
+        handleThemeChange(1);
+      } else if (e.key === ' ' || e.key === 'Enter') {
         handleStateChange();
-      } else if (currentState === 'active') {
-        if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
-          handleThemeChange(-1);
-        } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
-          handleThemeChange(1);
-        } else if (e.key === ' ' || e.key === 'Enter') {
-          handleStateChange();
-        }
-      } else if (currentState === 'idle') {
-        if (e.key === 'ArrowLeft' || e.key === 'a') {
-          handleThemeChange(-1);
-        } else if (e.key === 'ArrowRight' || e.key === 'd') {
-          handleThemeChange(1);
-        }
       }
-    };
+    } else if (currentState === 'idle') {
+      if (e.key === 'ArrowLeft' || e.key === 'a') {
+        handleThemeChange(-1);
+      } else if (e.key === 'ArrowRight' || e.key === 'd') {
+        handleThemeChange(1);
+      }
+    }
+  };
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentState, currentTheme, isTransitioning, isChatOpen]);
+  window.addEventListener('keydown', handleKeyPress);
+  return () => window.removeEventListener('keydown', handleKeyPress);
+}, [currentState, currentTheme, isTransitioning, isChatOpen]);
 
   const renderDirectionArrows = () => {
-    if (currentState !== 'active') return null;
+  if (currentState !== 'active') return null;
 
-    return (
-      <AnimatePresence mode="wait">
-        {!isChatOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-            className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
-          >
+  return (
+    <AnimatePresence mode="sync"> {/* "wait"에서 "sync"로 변경 */}
+      {!isChatOpen && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
+          className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
+        >
+          <AnimatePresence mode="sync">
             {currentTheme > 0 && (
               <motion.div 
+                key="left-arrow"
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -353,9 +368,14 @@ const App = () => {
                 <ArrowLeft size={64} strokeWidth={2.5} />
               </motion.div>
             )}
-            <div className="flex-grow" />
+          </AnimatePresence>
+          
+          <div className="flex-grow" />
+          
+          <AnimatePresence mode="sync">
             {currentTheme < themes.length - 1 && (
               <motion.div 
+                key="right-arrow"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
@@ -365,11 +385,12 @@ const App = () => {
                 <ArrowRight size={64} strokeWidth={2.5} />
               </motion.div>
             )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    );
-  };
+          </AnimatePresence>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
   return (
     <div className="h-screen w-screen relative bg-white">
@@ -432,6 +453,21 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+
+// 브라우저 확대 설정 (중앙 기준)
+// window.onload = function() {
+//   const root = document.getElementById('root');
+//   root.style.transform = "scale(1.125)";
+//   root.style.transformOrigin = "center"; // 중앙 기준
+//   root.style.position = "fixed";
+//   root.style.width = "100%";
+//   root.style.height = "100%";
+//   root.style.top = "0";
+//   root.style.left = "0";
+  
+//   // 스크롤바 방지
+//   document.body.style.overflow = "hidden";
+// }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -761,31 +797,36 @@ const LoadingDots = () => (
   </div>
 );
 
-// 아이콘 목록
-const ICONS = [Plus, Minus, X, Percent];
-
-// 랜덤 색상 생성 함수
-const getRandomColor = () => {
+const getSessionStyling = () => {
+  const ICONS = [Plus, Minus, X, Percent];
+  const aiIconIndex = Math.floor(Math.random() * ICONS.length);
+  let userIconIndex;
+  do {
+    userIconIndex = Math.floor(Math.random() * ICONS.length);
+  } while (userIconIndex === aiIconIndex);
+  
   const hue = Math.floor(Math.random() * 360);
-  return `hsla(${hue}, 85%, 85%, 0.7)`;
+  const userColor = `hsla(${hue}, 85%, 85%, 0.7)`;
+  
+  return {
+    aiIcon: ICONS[aiIconIndex],
+    userIcon: ICONS[userIconIndex],
+    userColor,
+  };
 };
 
-const ChatMessage = React.memo(({ message, isAI, isLoading, distance, themeColor }) => {
-  const IconComponent = React.useMemo(() => 
-    ICONS[Math.floor(Math.random() * ICONS.length)],
-    []
-  );
-
-  const backgroundColor = React.useMemo(() => {
-    if (isAI) {
-      const color = themeColor.replace('#', '');
-      const r = parseInt(color.substr(0, 2), 16);
-      const g = parseInt(color.substr(2, 2), 16);
-      const b = parseInt(color.substr(4, 2), 16);
-      return `rgba(${r}, ${g}, ${b}, 0.15)`;
-    }
-    return getRandomColor();
-  }, [isAI, themeColor]);
+const ChatMessage = React.memo(({ 
+  message, 
+  isAI, 
+  isLoading, 
+  distance, 
+  themeColor,
+  sessionStyling 
+}) => {
+  const IconComponent = isAI ? sessionStyling.aiIcon : sessionStyling.userIcon;
+  const backgroundColor = isAI 
+    ? `rgba(${themeColor.replace('#', '').match(/.{2}/g).map(x => parseInt(x, 16)).join(', ')}, 0.15)` 
+    : sessionStyling.userColor;
 
   return (
     <motion.div 
@@ -858,19 +899,7 @@ const ChatInterface = ({
   const [isFinalMessage, setIsFinalMessage] = useState(false);
   const [isClosingSequence, setIsClosingSequence] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
-  const [sessionIcons] = useState(() => {
-  const aiIconIndex = Math.floor(Math.random() * ICONS.length);
-  let userIconIndex;
-  do {
-    userIconIndex = Math.floor(Math.random() * ICONS.length);
-  } while (userIconIndex === aiIconIndex); // AI와 다른 아이콘이 선택될 때까지 반복
-
-  return {
-    ai: aiIconIndex,
-    user: userIconIndex
-  };
-  });
-  
+  const [sessionStyling] = useState(getSessionStyling);
 
   const inputRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -878,6 +907,22 @@ const ChatInterface = ({
   const isProcessingRef = useRef(false);
   
   const MESSAGE_DELAY = 2000;
+
+  const resetChatState = () => {
+    setMessages([]);
+    setInputValue('');
+    setShouldAutoScroll(true);
+    setConversationCount(0);
+    setIsExhibitionEnding(false);
+    setIsFinalMessage(false);
+    setIsClosingSequence(false);
+    setConversationHistory([]);
+    isProcessingRef.current = false;
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  };
 
   const createGradient = (color, type = 'vertical') => {
     const hex = color.replace('#', '');
@@ -916,21 +961,6 @@ const ChatInterface = ({
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 10;
     setShouldAutoScroll(isAtBottom);
-  };
-
-  const resetAllStates = () => {
-    setMessages([]);
-    setInputValue('');
-    setShouldAutoScroll(true);
-    setConversationCount(0);
-    setIsExhibitionEnding(false);
-    setIsFinalMessage(false);
-    setIsClosingSequence(false);
-    setConversationHistory([]);
-    onClose();
-    if (window.resetToIdle) {
-      window.resetToIdle();
-    }
   };
 
   const addAIMessage = async (message, showLoading = true, delay = MESSAGE_DELAY) => {
@@ -995,8 +1025,38 @@ const ChatInterface = ({
     );
 
     await new Promise(resolve => setTimeout(resolve, 7000));
-    resetAllStates();
+    resetChatState();
+    onClose();
+    if (window.resetToIdle) {
+      window.resetToIdle();
+    }
   };
+
+  // 채팅이 닫힐 때 상태 초기화
+  useEffect(() => {
+    if (!isOpen && !isClosing) {
+      resetChatState();
+    }
+  }, [isOpen, isClosing]);
+
+  // 테마 변경 시 대화 상태 초기화
+  useEffect(() => {
+    if (isOpen) {
+      resetChatState();
+      const initChat = async () => {
+        try {
+          setMessages([{ text: "안녕하세요!", isAI: true }]);
+          const firstQuestion = await chatService.getInitialQuestion(currentQuestion);
+          await addAIMessage(firstQuestion, true, MESSAGE_DELAY);
+          setConversationHistory([{ role: "assistant", content: firstQuestion }]);
+        } catch (error) {
+          console.error('Chat initialization error:', error);
+          await addAIMessage(currentQuestion, true, MESSAGE_DELAY);
+        }
+      };
+      initChat();
+    }
+  }, [currentTheme, isOpen]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -1010,43 +1070,12 @@ const ChatInterface = ({
     scrollToBottom();
   }, [messages]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      setMessages([]);
-      setInputValue('');
-      setShouldAutoScroll(true);
-      return;
-    }
-
-    const initChat = async () => {
-      if (isProcessingRef.current) return;
-      isProcessingRef.current = true;
-
-      try {
-        setMessages([{ text: "안녕하세요!", isAI: true }]);
-        
-        const firstQuestion = await chatService.getInitialQuestion(currentQuestion);
-        await addAIMessage(firstQuestion, true, MESSAGE_DELAY);
-        setConversationHistory([{ role: "assistant", content: firstQuestion }]);
-      } catch (error) {
-        console.error('Chat initialization error:', error);
-        await addAIMessage(currentQuestion, true, MESSAGE_DELAY);
-      } finally {
-        isProcessingRef.current = false;
-      }
-    };
-
-    initChat();
-    inputRef.current?.focus();
-  }, [isOpen, currentQuestion]);
-
   const handleInputChange = (e) => {
     setInputValue(e.target.value);
     onInteraction?.();
     
     if (e.target.value) {
       const hasTypingMessage = messages.some(msg => msg.isTypingMessage);
-      
       if (!hasTypingMessage) {
         setMessages(prev => [...prev, { text: '', isAI: false, isLoading: true, isTypingMessage: true }]);
       }
@@ -1106,6 +1135,17 @@ const ChatInterface = ({
     isProcessingRef.current = false;
   };
 
+  const handleChatClose = () => {
+    sounds.close();
+    setIsChatClosing(true);
+    setIsChatOpen(false);
+    
+    setTimeout(() => {
+      setIsChatClosing(false);
+      resetChatState();
+    }, 500);
+  };
+
   if (!isOpen && !isClosing) return null;
 
   return (
@@ -1145,17 +1185,16 @@ const ChatInterface = ({
               >
                 <div className="flex-grow" />
                 {messages.map((msg, idx) => (
-  <ChatMessage 
-    key={idx}
-    message={msg.text}
-    isAI={msg.isAI}
-    isLoading={msg.isLoading}
-    distance={messages.length - idx - 1}
-    themeColor={themeColor}
-    iconType={msg.isAI ? sessionIcons.ai : sessionIcons.user}
-
-  />
-))}
+                  <ChatMessage 
+                    key={idx}
+                    message={msg.text}
+                    isAI={msg.isAI}
+                    isLoading={msg.isLoading}
+                    distance={messages.length - idx - 1}
+                    themeColor={themeColor}
+                    sessionStyling={sessionStyling}
+                  />
+                ))}
                 <div className="flex-grow" />
               </div>
 
@@ -2022,126 +2061,200 @@ export const chatStorageService = {
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\services\visionService.js
 
+import { Camera } from '@mediapipe/camera_utils';
+import { Pose } from '@mediapipe/pose';
+
 class VisionService {
   constructor() {
-    this.ws = null;
+    this.videoElement = null;
+    this.camera = null;
+    this.pose = null;
     this.isConnected = false;
     this.onPresenceChange = null;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.baseReconnectDelay = 1000;
-    this.isReconnecting = false;
-    this.lastConnectionTime = null;
+    this.isViewerPresent = false;
+    this.lastPresenceTime = Date.now();
+    this.isInitializing = false;
+
+    // Constants
+    this.SHOULDER_WIDTH_THRESHOLD = 0.2;
+    this.PRESENCE_TIMEOUT = 2000;
   }
 
-  connect() {
-    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+  setupVideoElement() {
+    const video = document.createElement('video');
+    video.style.cssText = `
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      width: 32px;
+      height: 24px;
+      opacity: 0;
+      pointer-events: none;
+    `;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    document.body.appendChild(video);
+    return video;
+  }
+
+  onResults = (results) => {
+    if (!results.poseLandmarks) {
+      this.updatePresence(false);
       return;
     }
 
     try {
-      this.ws = new WebSocket('ws://localhost:12345');
+      const leftShoulder = results.poseLandmarks[11];
+      const rightShoulder = results.poseLandmarks[12];
       
-      this.ws.onopen = () => {
-        console.log('Vision WebSocket Connected');
-        this.isConnected = true;
-        this.reconnectAttempts = 0;
-        this.lastConnectionTime = Date.now();
-        this.isReconnecting = false;
-      };
+      if (!leftShoulder || !rightShoulder) {
+        this.updatePresence(false);
+        return;
+      }
 
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Presence 변경 감지
-          if (this.onPresenceChange && 'viewer_present' in data) {
-            this.onPresenceChange(data.viewer_present);
-          }
-        } catch (error) {
-          console.error('Vision data parse error:', error);
-        }
-      };
-
-      this.ws.onclose = (event) => {
-        console.log('Vision WebSocket Disconnected', event.code, event.reason);
-        this.isConnected = false;
-
-        if (!event.wasClean) {
-          this.scheduleReconnect();
-        }
-      };
-
-      this.ws.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-        if (this.ws) {
-          this.ws.close();
-        }
-      };
-
+      const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
+      this.updatePresence(shoulderWidth > this.SHOULDER_WIDTH_THRESHOLD);
     } catch (error) {
-      console.error('WebSocket connection error:', error);
-      this.scheduleReconnect();
+      this.updatePresence(false);
     }
   }
 
-  scheduleReconnect() {
-    if (this.isReconnecting) return;
+  updatePresence(isDetected) {
+    if (!this.isConnected) return false;
 
-    this.isReconnecting = true;
-    this.reconnectAttempts++;
+    const currentTime = Date.now();
+    const previousState = this.isViewerPresent;
 
-    const delay = Math.min(
-      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
-      10000
-    );
-
-    console.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
-
-    setTimeout(() => {
-      if (!this.isConnected) {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-          console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-          this.connect();
-        } else {
-          console.log('Max reconnection attempts reached');
-          this.resetConnection();
-        }
+    if (isDetected) {
+      this.lastPresenceTime = currentTime;
+      if (!this.isViewerPresent) {
+        this.isViewerPresent = true;
+        this.onPresenceChange?.(true);
       }
-      this.isReconnecting = false;
-    }, delay);
+    } else if (this.isViewerPresent) {
+      const timeSinceLastPresence = currentTime - this.lastPresenceTime;
+      if (timeSinceLastPresence > this.PRESENCE_TIMEOUT) {
+        this.isViewerPresent = false;
+        this.onPresenceChange?.(false);
+      }
+    }
+
+    return previousState !== this.isViewerPresent;
   }
 
-  resetConnection() {
-    this.reconnectAttempts = 0;
-    this.isReconnecting = false;
-    this.connect();
+  async setupPose() {
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 0,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults(this.onResults);
+
+    await pose.initialize();
+    return pose;
+  }
+
+  async setupCamera() {
+    if (!this.videoElement) return null;
+
+    return new Promise((resolve, reject) => {
+      try {
+        const camera = new Camera(this.videoElement, {
+          onFrame: async () => {
+            if (this.isConnected && this.pose) {
+              try {
+                await this.pose.send({ image: this.videoElement });
+              } catch (error) {
+                // Silent error handling
+              }
+            }
+          },
+          width: 640,
+          height: 480
+        });
+
+        camera.start()
+          .then(() => resolve(camera))
+          .catch(reject);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  async connect() {
+    if (this.isConnected || this.isInitializing) return;
+
+    try {
+      console.log('Vision Service: Initializing...');
+      this.isInitializing = true;
+
+      // Create video element
+      if (!this.videoElement) {
+        this.videoElement = this.setupVideoElement();
+      }
+
+      // Setup pose detection
+      if (!this.pose) {
+        this.pose = await this.setupPose();
+      }
+
+      // Setup camera
+      if (!this.camera) {
+        this.camera = await this.setupCamera();
+      }
+
+      this.isConnected = true;
+      this.isInitializing = false;
+      console.log('Vision Service: Connected');
+
+    } catch (error) {
+      console.error('Vision Service Error:', error);
+      this.disconnect();
+      throw error;
+    }
   }
 
   disconnect() {
-    if (this.ws) {
+    if (this.camera) {
       try {
-        this.ws.close(1000, "Normal closure");
-      } catch (err) {
-        console.error('Error closing websocket:', err);
-      }
-      this.ws = null;
-      this.isConnected = false;
+        this.camera.stop();
+      } catch (e) {}
+      this.camera = null;
     }
-  }
 
-  startConnectionCheck() {
-    setInterval(() => {
-      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-        this.connect();
-      }
-    }, 5000);
+    if (this.pose) {
+      try {
+        this.pose.close();
+      } catch (e) {}
+      this.pose = null;
+    }
+
+    if (this.videoElement && this.videoElement.parentNode) {
+      try {
+        if (this.videoElement.srcObject) {
+          const tracks = this.videoElement.srcObject.getTracks();
+          tracks.forEach(track => track.stop());
+        }
+        this.videoElement.parentNode.removeChild(this.videoElement);
+      } catch (e) {}
+    }
+    this.videoElement = null;
+
+    this.isConnected = false;
+    this.isInitializing = false;
+    this.isViewerPresent = false;
+    console.log('Vision Service: Disconnected');
   }
 }
 
 const visionService = new VisionService();
-visionService.startConnectionCheck();
-
 export default visionService;
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\types\aiTypes.js

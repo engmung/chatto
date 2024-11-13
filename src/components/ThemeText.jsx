@@ -23,7 +23,7 @@ const ThemeText = ({
 
   return (
     <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-[1]">
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="sync">  {/* 여기만 "wait"에서 "sync"로 변경 */}
         {textState === 'entering' && (
           <motion.div
             key={`enter-${currentTheme}`}

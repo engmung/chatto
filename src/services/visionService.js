@@ -1,121 +1,278 @@
 class VisionService {
   constructor() {
-    this.ws = null;
+    this.videoElement = null;
+    this.camera = null;
+    this.pose = null;
     this.isConnected = false;
     this.onPresenceChange = null;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.baseReconnectDelay = 1000;
-    this.isReconnecting = false;
-    this.lastConnectionTime = null;
+    this.isViewerPresent = false;
+    this.lastPresenceTime = Date.now();
+    this.isInitializing = false;
+    this.retryCount = 0;
+    this.maxRetries = 3;
+
+    // Constants
+    this.SHOULDER_WIDTH_THRESHOLD = 0.2;
+    this.PRESENCE_TIMEOUT = 2000;
   }
 
-  connect() {
-    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+  setupVideoElement() {
+    if (this.videoElement) {
+      return this.videoElement;
+    }
+
+    const video = document.createElement('video');
+    video.style.cssText = `
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      width: 32px;
+      height: 24px;
+      opacity: 0;
+      pointer-events: none;
+    `;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    document.body.appendChild(video);
+    this.videoElement = video;
+    return video;
+  }
+
+  onResults = (results) => {
+    if (!results.poseLandmarks) {
+      this.updatePresence(false);
       return;
     }
 
     try {
-      this.ws = new WebSocket('ws://localhost:12345');
+      const leftShoulder = results.poseLandmarks[11];
+      const rightShoulder = results.poseLandmarks[12];
       
-      this.ws.onopen = () => {
-        console.log('Vision WebSocket Connected');
-        this.isConnected = true;
-        this.reconnectAttempts = 0;
-        this.lastConnectionTime = Date.now();
-        this.isReconnecting = false;
-      };
+      if (!leftShoulder || !rightShoulder) {
+        this.updatePresence(false);
+        return;
+      }
 
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Presence 변경 감지
-          if (this.onPresenceChange && 'viewer_present' in data) {
-            this.onPresenceChange(data.viewer_present);
-          }
-        } catch (error) {
-          console.error('Vision data parse error:', error);
-        }
-      };
-
-      this.ws.onclose = (event) => {
-        console.log('Vision WebSocket Disconnected', event.code, event.reason);
-        this.isConnected = false;
-
-        if (!event.wasClean) {
-          this.scheduleReconnect();
-        }
-      };
-
-      this.ws.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-        if (this.ws) {
-          this.ws.close();
-        }
-      };
-
+      const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
+      this.updatePresence(shoulderWidth > this.SHOULDER_WIDTH_THRESHOLD);
     } catch (error) {
-      console.error('WebSocket connection error:', error);
-      this.scheduleReconnect();
+      console.warn('Error processing pose results:', error);
+      this.updatePresence(false);
     }
   }
 
-  scheduleReconnect() {
-    if (this.isReconnecting) return;
+  updatePresence(isDetected) {
+    if (!this.isConnected) return false;
 
-    this.isReconnecting = true;
-    this.reconnectAttempts++;
+    const currentTime = Date.now();
+    const previousState = this.isViewerPresent;
 
-    const delay = Math.min(
-      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
-      10000
-    );
-
-    console.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
-
-    setTimeout(() => {
-      if (!this.isConnected) {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-          console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-          this.connect();
-        } else {
-          console.log('Max reconnection attempts reached');
-          this.resetConnection();
-        }
+    if (isDetected) {
+      this.lastPresenceTime = currentTime;
+      if (!this.isViewerPresent) {
+        this.isViewerPresent = true;
+        this.onPresenceChange?.(true);
       }
-      this.isReconnecting = false;
-    }, delay);
+    } else if (this.isViewerPresent) {
+      const timeSinceLastPresence = currentTime - this.lastPresenceTime;
+      if (timeSinceLastPresence > this.PRESENCE_TIMEOUT) {
+        this.isViewerPresent = false;
+        this.onPresenceChange?.(false);
+      }
+    }
+
+    return previousState !== this.isViewerPresent;
   }
 
-  resetConnection() {
-    this.reconnectAttempts = 0;
-    this.isReconnecting = false;
-    this.connect();
+  async loadDependencies() {
+    // Load camera_utils.js
+    if (!window.Camera) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    // Load pose detection
+    if (!window.Pose) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+  }
+
+  async initializeMediaPipe() {
+    await this.loadDependencies();
+
+    const pose = new window.Pose({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+      }
+    });
+
+    pose.setOptions({
+      modelComplexity: 0,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+      selfieMode: true
+    });
+
+    pose.onResults(this.onResults);
+
+    try {
+      await pose.initialize();
+      return pose;
+    } catch (error) {
+      console.error('Failed to initialize MediaPipe Pose:', error);
+      throw error;
+    }
+  }
+
+  async setupCamera() {
+    if (!this.videoElement) {
+      throw new Error('Video element not initialized');
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: 640,
+          height: 480,
+          facingMode: 'user'
+        }
+      });
+
+      this.videoElement.srcObject = stream;
+      await this.videoElement.play();
+
+      const camera = new window.Camera(this.videoElement, {
+        onFrame: async () => {
+          if (this.isConnected && this.pose) {
+            try {
+              await this.pose.send({ image: this.videoElement });
+            } catch (error) {
+              console.warn('Frame processing error:', error);
+            }
+          }
+        },
+        width: 640,
+        height: 480
+      });
+
+      return camera;
+
+    } catch (error) {
+      console.error('Camera setup failed:', error);
+      throw error;
+    }
+  }
+
+  async connect() {
+    if (this.isConnected || this.isInitializing) {
+      return;
+    }
+
+    try {
+      console.log('Vision Service: Initializing...');
+      this.isInitializing = true;
+
+      // Setup video element
+      this.setupVideoElement();
+
+      // Initialize MediaPipe
+      this.pose = await this.initializeMediaPipe();
+
+      // Setup camera
+      this.camera = await this.setupCamera();
+      await this.camera.start();
+
+      this.isConnected = true;
+      this.isInitializing = false;
+      console.log('Vision Service: Connected successfully');
+
+    } catch (error) {
+      console.error('Vision Service initialization failed:', error);
+      this.disconnect();
+      
+      // Retry logic
+      if (this.retryCount < this.maxRetries) {
+        this.retryCount++;
+        console.log(`Retrying connection (attempt ${this.retryCount}/${this.maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return this.connect();
+      }
+      
+      throw error;
+    }
   }
 
   disconnect() {
-    if (this.ws) {
+    if (this.camera) {
       try {
-        this.ws.close(1000, "Normal closure");
-      } catch (err) {
-        console.error('Error closing websocket:', err);
+        this.camera.stop();
+      } catch (e) {
+        console.warn('Error stopping camera:', e);
       }
-      this.ws = null;
-      this.isConnected = false;
+      this.camera = null;
+    }
+
+    if (this.pose) {
+      try {
+        this.pose.close();
+      } catch (e) {
+        console.warn('Error closing pose:', e);
+      }
+      this.pose = null;
+    }
+
+    if (this.videoElement) {
+      try {
+        if (this.videoElement.srcObject) {
+          const tracks = this.videoElement.srcObject.getTracks();
+          tracks.forEach(track => track.stop());
+        }
+        this.videoElement.parentNode?.removeChild(this.videoElement);
+      } catch (e) {
+        console.warn('Error cleaning up video element:', e);
+      }
+      this.videoElement = null;
+    }
+
+    this.isConnected = false;
+    this.isInitializing = false;
+    this.isViewerPresent = false;
+    this.retryCount = 0;
+    console.log('Vision Service: Disconnected');
+  }
+
+  suspend() {
+    if (this.camera) {
+      try {
+        this.camera.stop();
+      } catch (e) {
+        console.warn('Error suspending camera:', e);
+      }
     }
   }
 
-  startConnectionCheck() {
-    setInterval(() => {
-      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-        this.connect();
+  resume() {
+    if (this.camera && this.isConnected) {
+      try {
+        this.camera.start();
+      } catch (e) {
+        console.warn('Error resuming camera:', e);
       }
-    }, 5000);
+    }
   }
 }
 
 const visionService = new VisionService();
-visionService.startConnectionCheck();
-
 export default visionService;

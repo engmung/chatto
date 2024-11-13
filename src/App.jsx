@@ -155,38 +155,45 @@ const App = () => {
   };
 
   const handleThemeChange = (changeDirection) => {
-    if ((currentState === 'active' || currentState === 'idle') && 
-        !bounceAnimationRef.current && !isTransitioning) {
-      const nextTheme = currentTheme + changeDirection;
-      
-      if (nextTheme < 0 || nextTheme >= themes.length) {
-        return;
-      }
-      
-      sounds.move();
-      handleInteraction();
-      
-      if (currentState === 'active') {
-        setIsTransitioning(true);
-        setPreviousText(currentText);
-        setCurrentText(themes[nextTheme].question);
-        setTextState('transitioning');
-      }
-      
-      setCurrentTheme(nextTheme);
-
-      if (currentState === 'active') {
-        setTimeout(() => {
-          setTextState('active');
-          setIsTransitioning(false);
-        }, 900);
-      }
-
-      if (currentState === 'idle') {
-        startAutoChange();
-      }
+  if ((currentState === 'active' || currentState === 'idle') && 
+      !bounceAnimationRef.current && !isTransitioning) {
+    const nextTheme = currentTheme + changeDirection;
+    
+    if (nextTheme < 0 || nextTheme >= themes.length) {
+      return;
     }
-  };
+    
+    // 비전 처리 일시 중지
+    visionService.suspend();
+    
+    sounds.move();
+    handleInteraction();
+    
+    if (currentState === 'active') {
+      setIsTransitioning(true);
+      setPreviousText(currentText);
+      setCurrentText(themes[nextTheme].question);
+      setTextState('transitioning');
+    }
+    
+    setCurrentTheme(nextTheme);
+
+    const resumeTimeout = setTimeout(() => {
+      if (currentState === 'active') {
+        setTextState('active');
+        setIsTransitioning(false);
+      }
+      visionService.resume();
+    }, 900);
+
+    if (currentState === 'idle') {
+      startAutoChange();
+      clearTimeout(resumeTimeout);
+      visionService.resume();
+    }
+  }
+};
+
 
   const handleStateChange = () => {
     setHasKeyInteraction(true);
@@ -225,35 +232,41 @@ const App = () => {
   };
 
   // Vision Service 효과
-  useEffect(() => {
-    visionService.onPresenceChange = (present) => {
-      setIsViewerPresent(present);
-      if (present) {
-        if (currentState === 'idle') {
-          setHasKeyInteraction(false);
-          startGuideTimer();
-        } else {
-          lastInactiveTime.current = null;
-          if (inactivityTimerRef.current) {
-            clearTimeout(inactivityTimerRef.current);
-            inactivityTimerRef.current = null;
-          }
+  // useEffect 내부
+useEffect(() => {
+  let mounted = true;
+
+  visionService.onPresenceChange = (present) => {
+    if (!mounted) return;
+    
+    setIsViewerPresent(present);
+    if (present) {
+      if (currentState === 'idle') {
+        setHasKeyInteraction(false);
+        startGuideTimer();
+      } else {
+        lastInactiveTime.current = null;
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+          inactivityTimerRef.current = null;
         }
-      } else if (isActive || isChatOpen) {
-        startInactivityTimer();
       }
-    };
+    } else if (isActive || isChatOpen) {
+      startInactivityTimer();
+    }
+  };
 
-    visionService.onSwipeDetected = (direction) => {
-      if ((currentState === 'active' || currentState === 'idle') && !isChatOpen) {
-        handleInteraction();
-        handleThemeChange(direction === 'left' ? -1 : 1);
-      }
-    };
+  // Connect vision service
+  visionService.connect().catch((error) => {
+    console.warn('Failed to initialize vision:', error);
+  });
 
-    visionService.connect();
-    return () => visionService.disconnect();
-  }, [currentState, isChatOpen, isActive]);
+  // Cleanup
+  return () => {
+    mounted = false;
+    visionService.disconnect();
+  };
+}, []); // Empty dependency array
 
   useEffect(() => {
     const checkInterval = setInterval(() => {
@@ -315,20 +328,22 @@ const App = () => {
 }, [currentState, currentTheme, isTransitioning, isChatOpen]);
 
   const renderDirectionArrows = () => {
-    if (currentState !== 'active') return null;
+  if (currentState !== 'active') return null;
 
-    return (
-      <AnimatePresence mode="wait">
-        {!isChatOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-            className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
-          >
+  return (
+    <AnimatePresence mode="sync"> {/* "wait"에서 "sync"로 변경 */}
+      {!isChatOpen && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
+          className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
+        >
+          <AnimatePresence mode="sync"> {/* 여기도 "sync"로 설정 */}
             {currentTheme > 0 && (
               <motion.div 
+                key="left-arrow"
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -338,9 +353,14 @@ const App = () => {
                 <ArrowLeft size={64} strokeWidth={2.5} />
               </motion.div>
             )}
-            <div className="flex-grow" />
+          </AnimatePresence>
+          
+          <div className="flex-grow" />
+          
+          <AnimatePresence mode="sync"> {/* 여기도 "sync"로 설정 */}
             {currentTheme < themes.length - 1 && (
               <motion.div 
+                key="right-arrow"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
@@ -350,12 +370,14 @@ const App = () => {
                 <ArrowRight size={64} strokeWidth={2.5} />
               </motion.div>
             )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    );
+          </AnimatePresence>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
   };
-
+  
+  
   return (
     <div className="h-screen w-screen relative bg-white">
       <BackgroundMusic 
