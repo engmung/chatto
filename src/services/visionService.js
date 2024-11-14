@@ -8,18 +8,16 @@ class VisionService {
     this.isViewerPresent = false;
     this.lastPresenceTime = Date.now();
     this.isInitializing = false;
+    this.suspended = false;
     this.retryCount = 0;
     this.maxRetries = 3;
-
-    // Constants
+    this.processingFrame = false;
     this.SHOULDER_WIDTH_THRESHOLD = 0.2;
     this.PRESENCE_TIMEOUT = 2000;
   }
 
   setupVideoElement() {
-    if (this.videoElement) {
-      return this.videoElement;
-    }
+    if (this.videoElement) return this.videoElement;
 
     const video = document.createElement('video');
     video.style.cssText = `
@@ -30,7 +28,10 @@ class VisionService {
       height: 24px;
       opacity: 0;
       pointer-events: none;
+      z-index: -1;
     `;
+    video.playsInline = true;
+    video.muted = true;
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
     document.body.appendChild(video);
@@ -39,7 +40,7 @@ class VisionService {
   }
 
   onResults = (results) => {
-    if (!results.poseLandmarks) {
+    if (this.suspended || !results.poseLandmarks) {
       this.updatePresence(false);
       return;
     }
@@ -62,7 +63,7 @@ class VisionService {
   }
 
   updatePresence(isDetected) {
-    if (!this.isConnected) return false;
+    if (!this.isConnected || this.suspended) return false;
 
     const currentTime = Date.now();
     const previousState = this.isViewerPresent;
@@ -71,13 +72,21 @@ class VisionService {
       this.lastPresenceTime = currentTime;
       if (!this.isViewerPresent) {
         this.isViewerPresent = true;
-        this.onPresenceChange?.(true);
+        requestAnimationFrame(() => {
+          if (this.onPresenceChange && !this.suspended) {
+            this.onPresenceChange(true);
+          }
+        });
       }
     } else if (this.isViewerPresent) {
       const timeSinceLastPresence = currentTime - this.lastPresenceTime;
       if (timeSinceLastPresence > this.PRESENCE_TIMEOUT) {
         this.isViewerPresent = false;
-        this.onPresenceChange?.(false);
+        requestAnimationFrame(() => {
+          if (this.onPresenceChange && !this.suspended) {
+            this.onPresenceChange(false);
+          }
+        });
       }
     }
 
@@ -85,35 +94,42 @@ class VisionService {
   }
 
   async loadDependencies() {
-    // Load camera_utils.js
-    if (!window.Camera) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    }
+    const loadScript = async (url) => {
+      if (document.querySelector(`script[src="${url}"]`)) {
+        return;
+      }
 
-    // Load pose detection
-    if (!window.Pose) {
-      await new Promise((resolve, reject) => {
+      return new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js';
+        script.src = url;
         script.onload = resolve;
         script.onerror = reject;
         document.head.appendChild(script);
       });
+    };
+
+    try {
+      await Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js'),
+        loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.min.js')
+      ]);
+
+      // MediaPipe 초기화를 위한 대기 시간
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error('Failed to load dependencies:', error);
+      throw error;
     }
   }
 
   async initializeMediaPipe() {
-    await this.loadDependencies();
+    if (!window.Pose) {
+      throw new Error('MediaPipe Pose not loaded');
+    }
 
     const pose = new window.Pose({
       locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
       }
     });
 
@@ -136,9 +152,22 @@ class VisionService {
     }
   }
 
+  async processFrame() {
+    if (!this.isConnected || !this.pose || this.suspended || this.processingFrame) return;
+    
+    try {
+      this.processingFrame = true;
+      await this.pose.send({ image: this.videoElement });
+    } catch (error) {
+      console.warn('Frame processing error:', error);
+    } finally {
+      this.processingFrame = false;
+    }
+  }
+
   async setupCamera() {
-    if (!this.videoElement) {
-      throw new Error('Video element not initialized');
+    if (!this.videoElement || !window.Camera) {
+      throw new Error('Camera dependencies not initialized');
     }
 
     try {
@@ -146,7 +175,8 @@ class VisionService {
         video: {
           width: 640,
           height: 480,
-          facingMode: 'user'
+          facingMode: 'user',
+          frameRate: { ideal: 30 }
         }
       });
 
@@ -154,95 +184,82 @@ class VisionService {
       await this.videoElement.play();
 
       const camera = new window.Camera(this.videoElement, {
-        onFrame: async () => {
-          if (this.isConnected && this.pose) {
-            try {
-              await this.pose.send({ image: this.videoElement });
-            } catch (error) {
-              console.warn('Frame processing error:', error);
-            }
-          }
-        },
+        onFrame: async () => this.processFrame(),
         width: 640,
         height: 480
       });
 
       return camera;
-
     } catch (error) {
       console.error('Camera setup failed:', error);
       throw error;
     }
   }
 
+  suspend() {
+    if (!this.isConnected) return;
+    
+    this.suspended = true;
+    this.processingFrame = false;
+  }
+
+  resume() {
+    if (!this.isConnected) return;
+    
+    this.suspended = false;
+  }
+
   async connect() {
-    if (this.isConnected || this.isInitializing) {
-      return;
-    }
+    if (this.isConnected || this.isInitializing) return;
 
     try {
-      console.log('Vision Service: Initializing...');
       this.isInitializing = true;
+      this.suspended = false;
+      this.processingFrame = false;
 
-      // Setup video element
+      await this.loadDependencies();
       this.setupVideoElement();
-
-      // Initialize MediaPipe
       this.pose = await this.initializeMediaPipe();
-
-      // Setup camera
       this.camera = await this.setupCamera();
       await this.camera.start();
 
       this.isConnected = true;
-      this.isInitializing = false;
-      console.log('Vision Service: Connected successfully');
+      this.retryCount = 0;
 
     } catch (error) {
       console.error('Vision Service initialization failed:', error);
       this.disconnect();
       
-      // Retry logic
       if (this.retryCount < this.maxRetries) {
         this.retryCount++;
-        console.log(`Retrying connection (attempt ${this.retryCount}/${this.maxRetries})...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return this.connect();
       }
       
       throw error;
+    } finally {
+      this.isInitializing = false;
     }
   }
 
   disconnect() {
+    this.suspended = true;
+    this.processingFrame = false;
+
     if (this.camera) {
-      try {
-        this.camera.stop();
-      } catch (e) {
-        console.warn('Error stopping camera:', e);
-      }
+      this.camera.stop();
       this.camera = null;
     }
 
     if (this.pose) {
-      try {
-        this.pose.close();
-      } catch (e) {
-        console.warn('Error closing pose:', e);
-      }
+      this.pose.close();
       this.pose = null;
     }
 
-    if (this.videoElement) {
-      try {
-        if (this.videoElement.srcObject) {
-          const tracks = this.videoElement.srcObject.getTracks();
-          tracks.forEach(track => track.stop());
-        }
-        this.videoElement.parentNode?.removeChild(this.videoElement);
-      } catch (e) {
-        console.warn('Error cleaning up video element:', e);
-      }
+    if (this.videoElement?.srcObject) {
+      const tracks = this.videoElement.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
+      this.videoElement.remove();
       this.videoElement = null;
     }
 
@@ -250,27 +267,6 @@ class VisionService {
     this.isInitializing = false;
     this.isViewerPresent = false;
     this.retryCount = 0;
-    console.log('Vision Service: Disconnected');
-  }
-
-  suspend() {
-    if (this.camera) {
-      try {
-        this.camera.stop();
-      } catch (e) {
-        console.warn('Error suspending camera:', e);
-      }
-    }
-  }
-
-  resume() {
-    if (this.camera && this.isConnected) {
-      try {
-        this.camera.start();
-      } catch (e) {
-        console.warn('Error resuming camera:', e);
-      }
-    }
   }
 }
 

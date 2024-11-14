@@ -154,7 +154,8 @@ const App = () => {
     }
   };
 
-  const handleThemeChange = (changeDirection) => {
+  // 테마 변경 시
+const handleThemeChange = (changeDirection) => {
   if ((currentState === 'active' || currentState === 'idle') && 
       !bounceAnimationRef.current && !isTransitioning) {
     const nextTheme = currentTheme + changeDirection;
@@ -163,11 +164,14 @@ const App = () => {
       return;
     }
     
-    // 비전 처리 일시 중지
-    visionService.suspend();
-    
     sounds.move();
     handleInteraction();
+
+    
+    
+    // 비전 처리 일시 중지 (매우 짧은 시간만)
+    visionService.suspend();
+    setTimeout(() => visionService.resume(), 100);
     
     if (currentState === 'active') {
       setIsTransitioning(true);
@@ -178,18 +182,16 @@ const App = () => {
     
     setCurrentTheme(nextTheme);
 
-    const resumeTimeout = setTimeout(() => {
+    const textUpdateTimeout = setTimeout(() => {
       if (currentState === 'active') {
         setTextState('active');
         setIsTransitioning(false);
       }
-      visionService.resume();
     }, 900);
 
     if (currentState === 'idle') {
       startAutoChange();
-      clearTimeout(resumeTimeout);
-      visionService.resume();
+      clearTimeout(textUpdateTimeout);
     }
   }
 };
@@ -235,11 +237,19 @@ const App = () => {
   // useEffect 내부
 useEffect(() => {
   let mounted = true;
+  let presenceTimeout = null;
 
-  visionService.onPresenceChange = (present) => {
+  const handlePresenceChange = (present) => {
     if (!mounted) return;
     
+    // 이전 타임아웃 클리어
+    if (presenceTimeout) {
+      clearTimeout(presenceTimeout);
+      presenceTimeout = null;
+    }
+
     setIsViewerPresent(present);
+    
     if (present) {
       if (currentState === 'idle') {
         setHasKeyInteraction(false);
@@ -252,18 +262,32 @@ useEffect(() => {
         }
       }
     } else if (isActive || isChatOpen) {
-      startInactivityTimer();
+      // 부재 시 타임아웃 설정
+      presenceTimeout = setTimeout(() => {
+        startInactivityTimer();
+      }, 1000); // 1초 지연
     }
   };
 
-  // Connect vision service
-  visionService.connect().catch((error) => {
-    console.warn('Failed to initialize vision:', error);
-  });
+  visionService.onPresenceChange = handlePresenceChange;
+
+  // Connect vision service with error handling
+  const connectVision = async () => {
+    try {
+      await visionService.connect();
+    } catch (error) {
+      console.warn('Vision initialization error:', error);
+    }
+  };
+  
+  connectVision();
 
   // Cleanup
   return () => {
     mounted = false;
+    if (presenceTimeout) {
+      clearTimeout(presenceTimeout);
+    }
     visionService.disconnect();
   };
 }, []); // Empty dependency array

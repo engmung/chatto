@@ -5,9 +5,6 @@ Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도�
 Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\services
 
 
-Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\types
-
-
 Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\utils
 
 
@@ -169,7 +166,8 @@ const App = () => {
     }
   };
 
-  const handleThemeChange = (changeDirection) => {
+  // 테마 변경 시
+const handleThemeChange = (changeDirection) => {
   if ((currentState === 'active' || currentState === 'idle') && 
       !bounceAnimationRef.current && !isTransitioning) {
     const nextTheme = currentTheme + changeDirection;
@@ -178,11 +176,14 @@ const App = () => {
       return;
     }
     
-    // 비전 처리 일시 중지
-    visionService.suspend();
-    
     sounds.move();
     handleInteraction();
+
+    
+    
+    // 비전 처리 일시 중지 (매우 짧은 시간만)
+    visionService.suspend();
+    setTimeout(() => visionService.resume(), 100);
     
     if (currentState === 'active') {
       setIsTransitioning(true);
@@ -193,18 +194,16 @@ const App = () => {
     
     setCurrentTheme(nextTheme);
 
-    const resumeTimeout = setTimeout(() => {
+    const textUpdateTimeout = setTimeout(() => {
       if (currentState === 'active') {
         setTextState('active');
         setIsTransitioning(false);
       }
-      visionService.resume();
     }, 900);
 
     if (currentState === 'idle') {
       startAutoChange();
-      clearTimeout(resumeTimeout);
-      visionService.resume();
+      clearTimeout(textUpdateTimeout);
     }
   }
 };
@@ -250,11 +249,19 @@ const App = () => {
   // useEffect 내부
 useEffect(() => {
   let mounted = true;
+  let presenceTimeout = null;
 
-  visionService.onPresenceChange = (present) => {
+  const handlePresenceChange = (present) => {
     if (!mounted) return;
     
+    // 이전 타임아웃 클리어
+    if (presenceTimeout) {
+      clearTimeout(presenceTimeout);
+      presenceTimeout = null;
+    }
+
     setIsViewerPresent(present);
+    
     if (present) {
       if (currentState === 'idle') {
         setHasKeyInteraction(false);
@@ -267,18 +274,32 @@ useEffect(() => {
         }
       }
     } else if (isActive || isChatOpen) {
-      startInactivityTimer();
+      // 부재 시 타임아웃 설정
+      presenceTimeout = setTimeout(() => {
+        startInactivityTimer();
+      }, 1000); // 1초 지연
     }
   };
 
-  // Connect vision service
-  visionService.connect().catch((error) => {
-    console.warn('Failed to initialize vision:', error);
-  });
+  visionService.onPresenceChange = handlePresenceChange;
+
+  // Connect vision service with error handling
+  const connectVision = async () => {
+    try {
+      await visionService.connect();
+    } catch (error) {
+      console.warn('Vision initialization error:', error);
+    }
+  };
+  
+  connectVision();
 
   // Cleanup
   return () => {
     mounted = false;
+    if (presenceTimeout) {
+      clearTimeout(presenceTimeout);
+    }
     visionService.disconnect();
   };
 }, []); // Empty dependency array
@@ -355,7 +376,7 @@ useEffect(() => {
           transition={{ duration: 0.5, ease: "easeInOut" }}
           className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
         >
-          <AnimatePresence mode="sync">
+          <AnimatePresence mode="sync"> {/* 여기도 "sync"로 설정 */}
             {currentTheme > 0 && (
               <motion.div 
                 key="left-arrow"
@@ -372,7 +393,7 @@ useEffect(() => {
           
           <div className="flex-grow" />
           
-          <AnimatePresence mode="sync">
+          <AnimatePresence mode="sync"> {/* 여기도 "sync"로 설정 */}
             {currentTheme < themes.length - 1 && (
               <motion.div 
                 key="right-arrow"
@@ -390,8 +411,9 @@ useEffect(() => {
       )}
     </AnimatePresence>
   );
-};
-
+  };
+  
+  
   return (
     <div className="h-screen w-screen relative bg-white">
       <BackgroundMusic 
@@ -1882,7 +1904,7 @@ const ThemeText = ({
 
   return (
     <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-[1]">
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="sync">  {/* 여기만 "wait"에서 "sync"로 변경 */}
         {textState === 'entering' && (
           <motion.div
             key={`enter-${currentTheme}`}
@@ -2063,24 +2085,46 @@ File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\�
 
 import { Camera } from '@mediapipe/camera_utils';
 import { Pose } from '@mediapipe/pose';
+import VisionWorker from '../utils/visionWorker?worker';
 
 class VisionService {
   constructor() {
     this.videoElement = null;
     this.camera = null;
-    this.pose = null;
+    this.worker = null;
     this.isConnected = false;
     this.onPresenceChange = null;
     this.isViewerPresent = false;
     this.lastPresenceTime = Date.now();
     this.isInitializing = false;
+    this.suspended = false;
+    this.setupPromise = null;
+    this.mediaStream = null;
+    this.processingInterval = null;
+
+    // State for error handling
+    this.retryCount = 0;
+    this.maxRetries = 3;
+    this.retryTimeout = null;
+    
+    this.canvas = new OffscreenCanvas(320, 240);
+    this.ctx = this.canvas.getContext('2d', {
+      willReadFrequently: true,
+      alpha: false
+    });
 
     // Constants
-    this.SHOULDER_WIDTH_THRESHOLD = 0.2;
     this.PRESENCE_TIMEOUT = 2000;
+    this.PROCESS_INTERVAL = 100;
+    this.RETRY_DELAY = 1000;
+    this.MAX_RETRY_ATTEMPTS = 3;
   }
 
   setupVideoElement() {
+    if (this.videoElement) {
+      return this.videoElement;
+    }
+
     const video = document.createElement('video');
     video.style.cssText = `
       position: fixed;
@@ -2090,37 +2134,45 @@ class VisionService {
       height: 24px;
       opacity: 0;
       pointer-events: none;
+      z-index: -1;
     `;
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('autoplay', '');
+    video.setAttribute('muted', '');
+    
+    video.playsInline = true;
+    video.muted = true;
+    
     document.body.appendChild(video);
+    this.videoElement = video;
     return video;
   }
 
-  onResults = (results) => {
-    if (!results.poseLandmarks) {
-      this.updatePresence(false);
-      return;
+  startProcessing() {
+    if (!this.isConnected || !this.worker) return;
+
+    if (this.processingInterval) {
+      clearInterval(this.processingInterval);
     }
 
-    try {
-      const leftShoulder = results.poseLandmarks[11];
-      const rightShoulder = results.poseLandmarks[12];
-      
-      if (!leftShoulder || !rightShoulder) {
-        this.updatePresence(false);
-        return;
+    const processFrame = async () => {
+      if (this.suspended || !this.isConnected || !this.videoElement) return;
+
+      try {
+        this.ctx.drawImage(this.videoElement, 0, 0, 320, 240);
+        const imageData = this.ctx.getImageData(0, 0, 320, 240);
+        this.worker?.postMessage({ type: 'process', imageData }, [imageData.data.buffer]);
+      } catch (error) {
+        console.warn('Frame processing error:', error);
       }
+    };
 
-      const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
-      this.updatePresence(shoulderWidth > this.SHOULDER_WIDTH_THRESHOLD);
-    } catch (error) {
-      this.updatePresence(false);
-    }
+    this.processingInterval = setInterval(processFrame, this.PROCESS_INTERVAL);
   }
 
   updatePresence(isDetected) {
-    if (!this.isConnected) return false;
+    if (!this.isConnected || this.suspended) return false;
 
     const currentTime = Date.now();
     const previousState = this.isViewerPresent;
@@ -2129,136 +2181,263 @@ class VisionService {
       this.lastPresenceTime = currentTime;
       if (!this.isViewerPresent) {
         this.isViewerPresent = true;
-        this.onPresenceChange?.(true);
+        requestAnimationFrame(() => {
+          if (this.onPresenceChange && !this.suspended) {
+            this.onPresenceChange(true);
+          }
+        });
       }
     } else if (this.isViewerPresent) {
       const timeSinceLastPresence = currentTime - this.lastPresenceTime;
       if (timeSinceLastPresence > this.PRESENCE_TIMEOUT) {
         this.isViewerPresent = false;
-        this.onPresenceChange?.(false);
+        requestAnimationFrame(() => {
+          if (this.onPresenceChange && !this.suspended) {
+            this.onPresenceChange(false);
+          }
+        });
       }
     }
 
     return previousState !== this.isViewerPresent;
   }
 
-  async setupPose() {
-    const pose = new Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
+  async initializeWorker() {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+
+    this.worker = new VisionWorker();
+    
+    return new Promise((resolve, reject) => {
+      const initTimeout = setTimeout(() => {
+        reject(new Error('Worker initialization timeout'));
+      }, 10000);
+
+      this.worker.onmessage = (e) => {
+        const { type, isPresent, error } = e.data;
+        
+        if (type === 'initialized') {
+          clearTimeout(initTimeout);
+          this.startProcessing();
+          resolve();
+        }
+        else if (type === 'result') {
+          this.updatePresence(isPresent);
+        }
+        else if (type === 'error') {
+          console.warn('Vision worker error:', error);
+          if (this.isInitializing) {
+            clearTimeout(initTimeout);
+            reject(new Error(error));
+          }
+        }
+      };
+
+      this.worker.onerror = (error) => {
+        clearTimeout(initTimeout);
+        reject(error);
+      };
+
+      this.worker.postMessage({ 
+        type: 'init',
+        poseModule: { Pose }
+      });
     });
-
-    pose.setOptions({
-      modelComplexity: 0,
-      smoothLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-
-    pose.onResults(this.onResults);
-
-    await pose.initialize();
-    return pose;
   }
 
   async setupCamera() {
-    if (!this.videoElement) return null;
+    if (this.setupPromise) {
+      return this.setupPromise;
+    }
 
-    return new Promise((resolve, reject) => {
+    this.setupPromise = (async () => {
       try {
-        const camera = new Camera(this.videoElement, {
-          onFrame: async () => {
-            if (this.isConnected && this.pose) {
-              try {
-                await this.pose.send({ image: this.videoElement });
-              } catch (error) {
-                // Silent error handling
-              }
-            }
-          },
-          width: 640,
-          height: 480
+        const video = this.setupVideoElement();
+
+        if (this.mediaStream) {
+          this.mediaStream.getTracks().forEach(track => track.stop());
+          this.mediaStream = null;
+        }
+
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: 320,
+            height: 240,
+            facingMode: 'user',
+            frameRate: { ideal: 15 }
+          }
         });
 
-        camera.start()
-          .then(() => resolve(camera))
-          .catch(reject);
+        video.srcObject = this.mediaStream;
+
+        await new Promise((resolve, reject) => {
+          const playHandler = () => {
+            video.removeEventListener('playing', playHandler);
+            video.removeEventListener('error', errorHandler);
+            resolve();
+          };
+
+          const errorHandler = (error) => {
+            video.removeEventListener('playing', playHandler);
+            video.removeEventListener('error', errorHandler);
+            reject(error);
+          };
+
+          video.addEventListener('playing', playHandler);
+          video.addEventListener('error', errorHandler);
+
+          if (!video.paused && video.readyState >= 3) {
+            resolve();
+            return;
+          }
+
+          const playPromise = video.play();
+          if (playPromise) {
+            playPromise.catch(error => {
+              if (error.name === 'NotAllowedError') {
+                resolve();
+              } else {
+                reject(error);
+              }
+            });
+          }
+        });
+
+        if (this.camera) {
+          await this.camera.stop();
+          this.camera = null;
+        }
+
+        this.camera = new Camera(video, {
+          onFrame: () => {}, // Processing is handled in interval
+          width: 320,
+          height: 240
+        });
+
+        await this.camera.start();
+        return true;
+
       } catch (error) {
-        reject(error);
+        console.error('Camera setup failed:', error);
+        throw error;
+      } finally {
+        this.setupPromise = null;
       }
-    });
+    })();
+
+    return this.setupPromise;
+  }
+
+  cleanup() {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
+    }
+
+    if (this.processingInterval) {
+      clearInterval(this.processingInterval);
+      this.processingInterval = null;
+    }
+
+    if (this.camera) {
+      try {
+        this.camera.stop();
+      } catch (e) {
+        console.warn('Camera stop error:', e);
+      }
+      this.camera = null;
+    }
+
+    if (this.mediaStream) {
+      try {
+        this.mediaStream.getTracks().forEach(track => track.stop());
+      } catch (e) {
+        console.warn('MediaStream stop error:', e);
+      }
+      this.mediaStream = null;
+    }
+
+    if (this.videoElement) {
+      try {
+        this.videoElement.srcObject = null;
+        this.videoElement.remove();
+      } catch (e) {
+        console.warn('Video element cleanup error:', e);
+      }
+      this.videoElement = null;
+    }
+
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch (e) {
+        console.warn('Worker termination error:', e);
+      }
+      this.worker = null;
+    }
+
+    this.setupPromise = null;
   }
 
   async connect() {
-    if (this.isConnected || this.isInitializing) return;
+    if (this.isConnected || this.isInitializing) {
+      return;
+    }
 
     try {
-      console.log('Vision Service: Initializing...');
       this.isInitializing = true;
+      this.suspended = false;
 
-      // Create video element
-      if (!this.videoElement) {
-        this.videoElement = this.setupVideoElement();
-      }
-
-      // Setup pose detection
-      if (!this.pose) {
-        this.pose = await this.setupPose();
-      }
-
-      // Setup camera
-      if (!this.camera) {
-        this.camera = await this.setupCamera();
-      }
+      await Promise.all([
+        this.setupCamera(),
+        this.initializeWorker()
+      ]);
 
       this.isConnected = true;
-      this.isInitializing = false;
-      console.log('Vision Service: Connected');
+      this.retryCount = 0;
 
     } catch (error) {
-      console.error('Vision Service Error:', error);
-      this.disconnect();
-      throw error;
+      console.error('Vision Service initialization failed:', error);
+      
+      if (this.retryCount < this.MAX_RETRY_ATTEMPTS) {
+        this.retryCount++;
+        this.retryTimeout = setTimeout(() => {
+          this.connect();
+        }, this.RETRY_DELAY);
+      } else {
+        this.disconnect();
+        throw error;
+      }
+    } finally {
+      this.isInitializing = false;
     }
   }
 
   disconnect() {
-    if (this.camera) {
-      try {
-        this.camera.stop();
-      } catch (e) {}
-      this.camera = null;
-    }
-
-    if (this.pose) {
-      try {
-        this.pose.close();
-      } catch (e) {}
-      this.pose = null;
-    }
-
-    if (this.videoElement && this.videoElement.parentNode) {
-      try {
-        if (this.videoElement.srcObject) {
-          const tracks = this.videoElement.srcObject.getTracks();
-          tracks.forEach(track => track.stop());
-        }
-        this.videoElement.parentNode.removeChild(this.videoElement);
-      } catch (e) {}
-    }
-    this.videoElement = null;
-
+    this.cleanup();
     this.isConnected = false;
     this.isInitializing = false;
     this.isViewerPresent = false;
-    console.log('Vision Service: Disconnected');
+    this.suspended = false;
+    this.retryCount = 0;
+  }
+
+  suspend() {
+    this.suspended = true;
+  }
+
+  resume() {
+    if (this.suspended) {
+      this.suspended = false;
+      this.startProcessing();
+    }
   }
 }
 
 const visionService = new VisionService();
 export default visionService;
-
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\types\aiTypes.js
-
 
 File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\utils\soundEffects.js
 
@@ -2310,3 +2489,74 @@ export const playSequence = async (soundNames, interval = 200) => {
 };
 
 export default sounds;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\exhibition-project\src\utils\visionWorker.js
+
+let pose = null;
+
+// MediaPipe 스크립트를 동적으로 로드하는 함수
+async function loadMediaPipe() {
+  await import('/@fs/node_modules/@mediapipe/pose/pose.js');
+  const Pose = self.Pose || {};
+  return Pose;
+}
+
+self.onmessage = async (e) => {
+  const { type, imageData } = e.data;
+  
+  if (type === 'init') {
+    try {
+      const Pose = await loadMediaPipe();
+      
+      pose = new Pose({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        }
+      });
+
+      pose.setOptions({
+        modelComplexity: 0,
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        smoothSegmentation: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+        selfieMode: true
+      });
+
+      pose.onResults((results) => {
+        if (!results.poseLandmarks) {
+          self.postMessage({ type: 'result', isPresent: false });
+          return;
+        }
+
+        const leftShoulder = results.poseLandmarks[11];
+        const rightShoulder = results.poseLandmarks[12];
+        
+        if (!leftShoulder || !rightShoulder) {
+          self.postMessage({ type: 'result', isPresent: false });
+          return;
+        }
+
+        const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
+        self.postMessage({ 
+          type: 'result', 
+          isPresent: shoulderWidth > 0.2 
+        });
+      });
+
+      await pose.initialize();
+      self.postMessage({ type: 'initialized' });
+    } catch (error) {
+      self.postMessage({ type: 'error', error: error.message });
+    }
+  }
+  
+  else if (type === 'process' && pose) {
+    try {
+      await pose.send({ image: imageData });
+    } catch (error) {
+      self.postMessage({ type: 'error', error: error.message });
+    }
+  }
+};
