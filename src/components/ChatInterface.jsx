@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Minus, X, Percent } from 'lucide-react';
 import chatService from '../services/aiChatService';
-import { chatStorageService } from '../services/chatStorageService';
 import { sounds } from '../utils/soundEffects';
 
 const LoadingDots = () => (
@@ -155,22 +154,18 @@ const ChatInterface = ({
 
     return type === 'vertical'
       ? `linear-gradient(180deg, 
-          rgba(${r},${g},${b},0.25) 0%,
-          rgba(${r},${g},${b},0.20) 10%,
-          rgba(${r},${g},${b},0.16) 20%,
-          rgba(${r},${g},${b},0.12) 30%,
-          rgba(${r},${g},${b},0.08) 40%,
-          rgba(${r},${g},${b},0.04) 50%,
-          rgba(${r},${g},${b},0.02) 60%,
+          rgba(${r},${g},${b},0.50) 0%,
+          rgba(${r},${g},${b},0.40) 60%,
+          rgba(${r},${g},${b},0.20) 80%,
           rgba(${r},${g},${b},0) 100%)`
       : `linear-gradient(90deg,
-          rgba(${r},${g},${b},0.25) 0%,
-          rgba(${r},${g},${b},0.16) 20%,
-          rgba(${r},${g},${b},0.08) 40%,
-          rgba(${r},${g},${b},0.04) 50%,
-          rgba(${r},${g},${b},0.08) 60%,
-          rgba(${r},${g},${b},0.16) 80%,
-          rgba(${r},${g},${b},0.25) 100%)`;
+          rgba(${r},${g},${b},0.45) 0%,
+          rgba(${r},${g},${b},0.36) 20%,
+          rgba(${r},${g},${b},0.28) 40%,
+          rgba(${r},${g},${b},0.24) 50%,
+          rgba(${r},${g},${b},0.28) 60%,
+          rgba(${r},${g},${b},0.36) 80%,
+          rgba(${r},${g},${b},0.45) 100%)`;
   };
 
   const scrollToBottom = () => {
@@ -204,48 +199,6 @@ const ChatInterface = ({
     await addAIMessage("안녕히 가세요!", true, MESSAGE_DELAY/2);
     
     sounds.special();
-    
-    await addAIMessage(
-      <div className="flex flex-col items-center pt-8 relative">
-        <div className="w-full h-[3px] bg-gradient-to-r from-transparent via-purple-300 to-transparent mb-6"/>
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-xl font-semibold mb-2"
-        >
-          <span className="bg-gradient-to-r from-gray-800 via-gray-600 to-gray-800 bg-clip-text text-transparent">
-            Interactive Experience by
-          </span>
-        </motion.div>
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="relative p-3"
-        >
-          <div className="absolute inset-0 rounded-2xl bg-gradient-radial from-rose-100 via-purple-50 to-blue-100 opacity-70" />
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-rose-200/20 via-purple-200/20 to-blue-200/20" />
-          <div className="relative">
-            <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent animate-gradient-x font-bold text-2xl">
-              이승훈
-            </span>
-          </div>
-        </motion.div>
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="text-base mt-2 mb-6 font-medium"
-        >
-          <span className="text-gray-800">
-            자율전공 / 시각디자인 / 23학번
-          </span>
-        </motion.div>
-        <div className="w-full h-[3px] bg-gradient-to-r from-transparent via-purple-300 to-transparent mb-6"/>
-      </div>, 
-      false, 
-      MESSAGE_DELAY
-    );
 
     await new Promise(resolve => setTimeout(resolve, 7000));
     resetChatState();

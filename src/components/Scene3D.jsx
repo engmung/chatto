@@ -4,7 +4,7 @@ import { OrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import ThemeSphere from './ThemeSphere';
 import CameraController from './CameraController';
-import { initialThemeData } from '../themes';  // import 수정
+import { initialThemeData } from '../themes';
 
 // 그림자 텍스처 생성
 const createShadowTexture = () => {
@@ -93,10 +93,10 @@ const AnimatedShadow = React.memo(({ position, isActive, state }) => {
   );
 });
 
-const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialThemeData }) => {  // themes prop 추가 및 기본값 설정
+const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialThemeData }) => {
   const spacing = 1.5;
   const decorationCount = 3;
-  const centerOffset = ((themes.length - 1) * spacing) / 2;  // themeData를 themes로 변경
+  const centerOffset = ((themes.length - 1) * spacing) / 2;
   
   const getThemePosition = (index) => [
     index * spacing - centerOffset,
@@ -119,8 +119,29 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialTheme
 
   return (
     <Canvas 
-      dpr={[1, 2]}
-      performance={{ min: 0.5 }}
+      dpr={[1, 1.5]}
+      performance={{ 
+        min: 0.5,
+        max: 1,
+        debounce: 200,
+        regress: true
+      }}
+      gl={{
+        powerPreference: "high-performance",
+        antialias: false,
+        stencil: false,
+        depth: true,
+        alpha: false,
+      }}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        contain: 'paint size layout',
+        touchAction: 'none',
+      }}
     >
       <color attach="background" args={['#FFFFFF']} />
 
@@ -162,7 +183,7 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialTheme
             state={currentState}
           />
         ))
-      , [currentState])}
+      , [currentState, decorationPositions])}
       
       {/* 테마 그림자 */}
       {React.useMemo(() => 
@@ -188,8 +209,9 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialTheme
             color={'#cccccc'}
           />
         ))
-      , [currentState])}
+      , [currentState, decorationPositions])}
       
+      {/* 테마 구들 */}
       {React.useMemo(() => 
         themes.map((theme, i) => (
           <ThemeSphere

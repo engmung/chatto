@@ -85,48 +85,6 @@ const frustratingMemories = [
   }
 ];
 
-const contemplativeMemories = [
-  {
-    question: "요즘 자주 떠오르는 생각이 있나요?",
-    color: '#7BFF7B'
-  },
-  {
-    question: "혼자만의 시간에 무엇을 하시나요?",
-    color: '#6AFF9B'
-  },
-  {
-    question: "변화하고 싶은 자신의 모습이 있나요?",
-    color: '#5FFFB5'
-  },
-  {
-    question: "최근에 새롭게 시작한 것이 있나요?",
-    color: '#59FFCC'
-  },
-  {
-    question: "자신의 어떤 모습이 가장 마음에 드나요?",
-    color: '#6FFFB8'
-  },
-  {
-    question: "스스로에게 해주고 싶은 칭찬은?",
-    color: '#6FFFA7'
-  },
-  {
-    question: "요즘 가장 집중하고 있는 것은 무엇인가요?",
-    color: '#8EFF8E'
-  },
-  {
-    question: "미래의 자신에게 하고 싶은 말이 있나요?",
-    color: '#7BFFAA'
-  },
-  {
-    question: "최근에 깨달은 것이 있다면?",
-    color: '#6EFF9D'
-  },
-  {
-    question: "나에게 가장 소중한 가치는 무엇인가요?",
-    color: '#7BFFB5'
-  }
-];
 
 function getRandomItem(array) {
   return array[Math.floor(Math.random() * array.length)];
@@ -152,11 +110,6 @@ function generateThemeData() {
     },
     {
       id: 3,
-      ...getRandomItem(contemplativeMemories),
-      floatingParams: { speed: 0.9, amplitude: 0.14, phase: Math.PI / 2 }
-    },
-    {
-      id: 4,
       color: '#4ade80',
       question: "전시 중 가장 인상 깊었던 것은?",
       floatingParams: { speed: 1.1, amplitude: 0.13, phase: Math.PI / 2.5 }

@@ -428,6 +428,8 @@ useEffect(() => {
         previousText={previousText}
         currentTheme={currentTheme}
         isTransitioning={isTransitioning}
+        themes={themes}
+        isChatOpen={isChatOpen}
       />
       {renderDirectionArrows()}
       <ChatInterface 
