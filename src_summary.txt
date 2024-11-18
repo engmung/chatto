@@ -1,0 +1,2474 @@
+﻿
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components
+
+
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\services
+
+
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\types
+
+
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\utils
+
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\App.jsx
+
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Scene3D from './components/Scene3D';
+import ThemeText from './components/ThemeText';
+import ChatInterface from './components/ChatInterface';
+import StartGuide from './components/StartGuide';
+import BackgroundMusic from './components/BackgroundMusic';
+import { initialThemeData, generateThemeData } from './themes';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+import visionService from './services/visionService';
+import { sounds } from './utils/soundEffects';
+
+const App = () => {
+  const [currentState, setCurrentState] = useState('idle');
+  const [currentTheme, setCurrentTheme] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [textState, setTextState] = useState('none');
+  const [previousText, setPreviousText] = useState(null);
+  const [currentText, setCurrentText] = useState(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatClosing, setIsChatClosing] = useState(false);
+  const [themes, setThemes] = useState(initialThemeData);
+  const [isViewerPresent, setIsViewerPresent] = useState(false);
+  const [hasKeyInteraction, setHasKeyInteraction] = useState(false);
+  const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
+  const [isActive, setIsActive] = useState(false);
+  const [hasUserInteraction, setHasUserInteraction] = useState(false);
+
+  const autoChangeInterval = useRef(null);
+  const bounceAnimationRef = useRef(null);
+  const inactivityTimerRef = useRef(null);
+  const guideTimerRef = useRef(null);
+  const directionRef = useRef(1);
+  const lastInactiveTime = useRef(null);
+
+  const clearAllTimers = () => {
+  if (autoChangeInterval.current) {
+    clearInterval(autoChangeInterval.current);
+    autoChangeInterval.current = null;
+  }
+  if (inactivityTimerRef.current) {
+    clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = null;
+  }
+  if (guideTimerRef.current) {
+    clearTimeout(guideTimerRef.current);
+    guideTimerRef.current = null;
+  }
+  lastInactiveTime.current = null;
+};
+
+  const startGuideTimer = () => {
+    if (guideTimerRef.current) {
+      clearTimeout(guideTimerRef.current);
+    }
+    
+    if (currentState === 'idle' && isViewerPresent && !hasKeyInteraction) {
+      guideTimerRef.current = setTimeout(() => {
+        setHasKeyInteraction(true);
+      }, 4000);
+    }
+  };
+
+  const checkAndResetInactivity = () => {
+  if (!isViewerPresent && lastInactiveTime.current) {
+    const currentTime = Date.now();
+    const inactiveTime = currentTime - lastInactiveTime.current;
+    const timeout = isChatOpen ? 10000 : 7000;
+
+    if (inactiveTime >= timeout) {
+      handleReset();
+    }
+  }
+};
+
+  const startInactivityTimer = () => {
+  if (inactivityTimerRef.current) {
+    clearTimeout(inactivityTimerRef.current);
+  }
+
+  if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+    lastInactiveTime.current = Date.now();
+
+    const timeout = isChatOpen ? 10000 : 7000;
+    inactivityTimerRef.current = setTimeout(() => {
+      handleReset();  // checkAndResetInactivity 대신 직접 handleReset 호출
+    }, timeout);
+  }
+};
+
+  const startAutoChange = () => {
+    if (autoChangeInterval.current) {
+      clearInterval(autoChangeInterval.current);
+    }
+
+    if (currentState === 'idle') {
+      setDirection(1);
+      directionRef.current = 1;
+      
+      autoChangeInterval.current = setInterval(() => {
+        setCurrentTheme(prev => {
+          if (prev === themes.length - 1) {
+            setDirection(-1);
+            directionRef.current = -1;
+            return prev - 1;
+          }
+          else if (prev === 0) {
+            setDirection(1);
+            directionRef.current = 1;
+            return prev + 1;
+          }
+          return prev + directionRef.current;
+        });
+      }, 7000);
+    }
+  };
+
+  const startIdleMode = () => {
+  clearAllTimers();
+  setCurrentState('idle');
+  setTextState('none');
+  setThemes(generateThemeData());
+  setCurrentTheme(0);
+  setHasKeyInteraction(false);
+  setIsActive(false);
+  startAutoChange();
+};
+
+  window.resetToIdle = startIdleMode;
+
+  const handleReset = () => {
+  sounds.reset();
+  setIsChatOpen(false);
+  setIsChatClosing(true);
+
+  // 채팅 인터페이스 애니메이션 완료 후 상태 리셋
+  setTimeout(() => {
+    setIsChatClosing(false);
+    startIdleMode();
+  }, 500);  // 채팅창 닫힘 애니메이션과 동일한 시간
+};
+
+  const handleInteraction = () => {
+    setLastInteractionTime(Date.now());
+    if (lastInactiveTime.current) {
+      lastInactiveTime.current = Date.now();
+    }
+    if (currentState === 'idle') {
+      setHasKeyInteraction(true);
+      if (guideTimerRef.current) {
+        clearTimeout(guideTimerRef.current);
+      }
+    }
+  };
+
+  // 테마 변경 시
+const handleThemeChange = (changeDirection) => {
+  if ((currentState === 'active' || currentState === 'idle') && 
+      !bounceAnimationRef.current && !isTransitioning) {
+    const nextTheme = currentTheme + changeDirection;
+    
+    if (nextTheme < 0 || nextTheme >= themes.length) {
+      return;
+    }
+    
+    sounds.move();
+    handleInteraction();
+
+    
+    
+    // 비전 처리 일시 중지 (매우 짧은 시간만)
+    visionService.suspend();
+    setTimeout(() => visionService.resume(), 100);
+    
+    if (currentState === 'active') {
+      setIsTransitioning(true);
+      setPreviousText(currentText);
+      setCurrentText(themes[nextTheme].question);
+      setTextState('transitioning');
+    }
+    
+    setCurrentTheme(nextTheme);
+
+    const textUpdateTimeout = setTimeout(() => {
+      if (currentState === 'active') {
+        setTextState('active');
+        setIsTransitioning(false);
+      }
+    }, 900);
+
+    if (currentState === 'idle') {
+      startAutoChange();
+      clearTimeout(textUpdateTimeout);
+    }
+  }
+};
+
+
+  const handleStateChange = () => {
+    setHasKeyInteraction(true);
+    sounds.select();
+    
+    if (currentState === 'active') {
+      setIsChatOpen(true);
+    } else {
+      setTimeout(() => {
+        setIsActive(true);
+        setCurrentState('active');
+        setCurrentText(themes[Math.round(currentTheme)].question);
+        setTextState('entering');
+        
+        setTimeout(() => {
+          setTextState('active');
+        }, 1150);
+
+        if (autoChangeInterval.current) {
+          clearInterval(autoChangeInterval.current);
+          autoChangeInterval.current = null;
+        }
+      }, );
+    }
+    
+    handleInteraction();
+  };
+
+  const handleChatClose = () => {
+    sounds.close();
+    setIsChatClosing(true);
+    setIsChatOpen(false);
+    setTimeout(() => {
+      setIsChatClosing(false);
+    }, 500);
+  };
+
+  // Vision Service 효과
+  // useEffect 내부
+useEffect(() => {
+  let mounted = true;
+  let presenceTimeout = null;
+
+  const handlePresenceChange = (present) => {
+    if (!mounted) return;
+    
+    // 이전 타임아웃 클리어
+    if (presenceTimeout) {
+      clearTimeout(presenceTimeout);
+      presenceTimeout = null;
+    }
+
+    setIsViewerPresent(present);
+    
+    if (present) {
+      if (currentState === 'idle') {
+        setHasKeyInteraction(false);
+        startGuideTimer();
+      } else {
+        lastInactiveTime.current = null;
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+          inactivityTimerRef.current = null;
+        }
+      }
+    } else if (isActive || isChatOpen) {
+      // 부재 시 타임아웃 설정
+      presenceTimeout = setTimeout(() => {
+        startInactivityTimer();
+      }, 1000); // 1초 지연
+    }
+  };
+
+  visionService.onPresenceChange = handlePresenceChange;
+
+  // Connect vision service with error handling
+  const connectVision = async () => {
+    try {
+      await visionService.connect();
+    } catch (error) {
+      console.warn('Vision initialization error:', error);
+    }
+  };
+  
+  connectVision();
+
+  // Cleanup
+  return () => {
+    mounted = false;
+    if (presenceTimeout) {
+      clearTimeout(presenceTimeout);
+    }
+    visionService.disconnect();
+  };
+}, []); // Empty dependency array
+
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+        checkAndResetInactivity();
+      }
+    }, 1000);
+
+    return () => clearInterval(checkInterval);
+  }, [isViewerPresent, currentState, isChatOpen]);
+
+  useEffect(() => {
+  if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+    startInactivityTimer();
+  }
+}, [isViewerPresent, currentState, isChatOpen]);
+
+  useEffect(() => {
+    if (currentState === 'idle') {
+      startAutoChange();
+    }
+    return () => clearAllTimers();
+  }, [currentState]);
+
+  useEffect(() => {
+  const handleKeyPress = (e) => {
+    handleInteraction();
+    setHasUserInteraction(true);
+
+    if (e.key === 'Escape') {
+      if (isChatOpen || currentState === 'active') {
+        handleReset();
+      }
+    }
+    
+    if (isChatOpen) return;
+
+    if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
+      handleStateChange();
+    } else if (currentState === 'active') {
+      if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
+        handleThemeChange(-1);
+      } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
+        handleThemeChange(1);
+      } else if (e.key === ' ' || e.key === 'Enter') {
+        handleStateChange();
+      }
+    } else if (currentState === 'idle') {
+      if (e.key === 'ArrowLeft' || e.key === 'a') {
+        handleThemeChange(-1);
+      } else if (e.key === 'ArrowRight' || e.key === 'd') {
+        handleThemeChange(1);
+      }
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyPress);
+  return () => window.removeEventListener('keydown', handleKeyPress);
+}, [currentState, currentTheme, isTransitioning, isChatOpen]);
+
+  const renderDirectionArrows = () => {
+  if (currentState !== 'active') return null;
+
+  return (
+    <AnimatePresence mode="sync"> {/* "wait"에서 "sync"로 변경 */}
+      {!isChatOpen && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
+          className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
+        >
+          <AnimatePresence mode="sync"> {/* 여기도 "sync"로 설정 */}
+            {currentTheme > 0 && (
+              <motion.div 
+                key="left-arrow"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="text-gray-600 animate-pulse"
+              >
+                <ArrowLeft size={64} strokeWidth={2.5} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          
+          <div className="flex-grow" />
+          
+          <AnimatePresence mode="sync"> {/* 여기도 "sync"로 설정 */}
+            {currentTheme < themes.length - 1 && (
+              <motion.div 
+                key="right-arrow"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="text-gray-600 animate-pulse"
+              >
+                <ArrowRight size={64} strokeWidth={2.5} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+  };
+  
+  
+  return (
+    <div className="h-screen w-screen relative bg-white">
+      <BackgroundMusic 
+        currentState={currentState}
+        isChatOpen={isChatOpen}
+        volume={0.5}
+        fadeTime={1000}
+        hasInteraction={hasUserInteraction}
+      />
+      <Scene3D 
+        currentState={currentState}
+        currentTheme={Math.round(currentTheme)}
+        isChatOpen={isChatOpen}
+        themes={themes}
+      />
+      <StartGuide 
+        isVisible={currentState === 'idle' && isViewerPresent && !hasKeyInteraction}
+        currentState={currentState}
+        onKeyInteraction={hasKeyInteraction}
+      />
+      <ThemeText
+        textState={textState}
+        currentText={currentText}
+        previousText={previousText}
+        currentTheme={currentTheme}
+        isTransitioning={isTransitioning}
+        themes={themes}
+        isChatOpen={isChatOpen}
+      />
+      {renderDirectionArrows()}
+      <ChatInterface 
+        isOpen={isChatOpen}
+        isClosing={isChatClosing}
+        currentQuestion={themes[Math.round(currentTheme)].question}
+        currentTheme={currentTheme}
+        onClose={handleChatClose}
+        themeColor={themes[Math.round(currentTheme)].color}
+        onInteraction={handleInteraction}
+      />
+    </div>
+  );
+};
+
+export default App;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\index.css
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\main.jsx
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+// 브라우저 확대 설정 (중앙 기준)
+// window.onload = function() {
+//   const root = document.getElementById('root');
+//   root.style.transform = "scale(1.125)";
+//   root.style.transformOrigin = "center"; // 중앙 기준
+//   root.style.position = "fixed";
+//   root.style.width = "100%";
+//   root.style.height = "100%";
+//   root.style.top = "0";
+//   root.style.left = "0";
+  
+//   // 스크롤바 방지
+//   document.body.style.overflow = "hidden";
+// }
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\themes.js
+
+// themes.js
+const funMemories = [
+  {
+    question: "최근에 큰 소리로 웃은 순간이 있나요?",
+    color: '#FF7B7B'
+  },
+  {
+    question: "친구와 함께한 즐거운 추억을 들려주세요",
+    color: '#FF9B6A'
+  },
+  {
+    question: "예상치 못한 즐거운 일이 있었나요?",
+    color: '#FFB55F'
+  },
+  {
+    question: "최근 가장 맛있게 먹은 음식은 무엇인가요?",
+    color: '#FFCC59'
+  },
+  {
+    question: "우연히 발견한 재미있는 것이 있나요?",
+    color: '#FFB86F'
+  },
+  {
+    question: "최근 본 영화나 드라마 중 재미있었던 장면은?",
+    color: '#FFA76F'
+  },
+  {
+    question: "갑자기 웃음이 났던 순간이 있나요?",
+    color: '#FF8E8E'
+  },
+  {
+    question: "친구와 나눈 재미있는 대화가 있나요?",
+    color: '#FFAA7B'
+  },
+  {
+    question: "최근에 받은 예상치 못한 선물이 있나요?",
+    color: '#FF9D6E'
+  },
+  {
+    question: "길거리에서 마주친 재미있는 장면이 있나요?",
+    color: '#FFB57B'
+  }
+];
+
+const frustratingMemories = [
+  {
+    question: "최근에 가장 답답했던 순간은 언제인가요?",
+    color: '#7B7BFF'
+  },
+  {
+    question: "누군가에게 하지 못한 말이 있나요?",
+    color: '#6A9BFF'
+  },
+  {
+    question: "시간이 부족하다고 느낀 순간이 있나요?",
+    color: '#5FB5FF'
+  },
+  {
+    question: "최근에 실수한 것 중 아쉬운 게 있나요?",
+    color: '#59CCFF'
+  },
+  {
+    question: "다시 한번 기회가 있다면 하고 싶은 말은?",
+    color: '#6FB8FF'
+  },
+  {
+    question: "오늘 하루 중 가장 힘들었던 순간은?",
+    color: '#6FA7FF'
+  },
+  {
+    question: "최근에 포기한 것이 있다면?",
+    color: '#8E8EFF'
+  },
+  {
+    question: "지금 해결하고 싶은 고민이 있나요?",
+    color: '#7BAAFF'
+  },
+  {
+    question: "누군가에게 사과하고 싶은 마음이 있나요?",
+    color: '#6E9DFF'
+  },
+  {
+    question: "스스로에게 화가 났던 순간이 있나요?",
+    color: '#7BB5FF'
+  }
+];
+
+
+function getRandomItem(array) {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
+function generateThemeData() {
+  return [
+    {
+      id: 0,
+      color: '#ff4b6b',
+      question: "오늘 가장 기억에 남는 순간은 언제인가요?",
+      floatingParams: { speed: 1, amplitude: 0.1, phase: 0 }
+    },
+    {
+      id: 1,
+      ...getRandomItem(funMemories),
+      floatingParams: { speed: 0.8, amplitude: 0.15, phase: Math.PI / 3 }
+    },
+    {
+      id: 2,
+      ...getRandomItem(frustratingMemories),
+      floatingParams: { speed: 1.2, amplitude: 0.12, phase: Math.PI / 1.5 }
+    },
+    {
+      id: 3,
+      color: '#4ade80',
+      question: "전시 중 가장 인상 깊었던 것은?",
+      floatingParams: { speed: 1.1, amplitude: 0.13, phase: Math.PI / 2.5 }
+    }
+  ];
+}
+
+export const initialThemeData = generateThemeData();
+export { generateThemeData };
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\BackgroundMusic.jsx
+
+import React, { useEffect, useRef, useState } from 'react';
+
+const BackgroundMusic = ({ 
+  currentState, 
+  isChatOpen,
+  volume = 0.5,
+  fadeTime = 1000,
+  hasInteraction = false 
+}) => {
+  const audioContextRef = useRef(null);
+  const gainNodeRef = useRef(null);
+  const sourceNodeRef = useRef(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // AudioContext 초기화 및 오디오 재생 설정
+  const initializeAudio = async () => {
+    if (isInitialized || !hasInteraction) return;
+
+    try {
+      // AudioContext 생성
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // GainNode 설정
+      gainNodeRef.current = audioContextRef.current.createGain();
+      gainNodeRef.current.connect(audioContextRef.current.destination);
+      gainNodeRef.current.gain.value = 0; // 초기 볼륨 0
+
+      // 오디오 파일 로드
+      const response = await fetch('/audio/background.wav');
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+
+      // 소스 노드 생성 및 재생
+      sourceNodeRef.current = audioContextRef.current.createBufferSource();
+      sourceNodeRef.current.buffer = audioBuffer;
+      sourceNodeRef.current.loop = true;
+      sourceNodeRef.current.connect(gainNodeRef.current);
+      sourceNodeRef.current.start(0);
+
+      // 볼륨 페이드 인
+      const now = audioContextRef.current.currentTime;
+      gainNodeRef.current.gain.setValueAtTime(0, now);
+      gainNodeRef.current.gain.linearRampToValueAtTime(volume * 0.6, now + 2);
+
+      setIsInitialized(true);
+    } catch (error) {
+      console.error('Error initializing audio:', error);
+    }
+  };
+
+  // 사용자 상호작용 감지 시 초기화
+  useEffect(() => {
+    if (hasInteraction && !isInitialized) {
+      initializeAudio();
+    }
+  }, [hasInteraction]);
+
+  // 상태에 따른 볼륨 조절
+  useEffect(() => {
+    if (!gainNodeRef.current || !isInitialized) return;
+
+    let targetVolume = 0;
+
+    if (currentState === 'idle') {
+      targetVolume = volume * 0.6;
+    } else if (currentState === 'active') {
+      targetVolume = isChatOpen ? volume * 0.3 : volume;
+    }
+
+    const now = audioContextRef.current.currentTime;
+    gainNodeRef.current.gain.linearRampToValueAtTime(
+      targetVolume,
+      now + (fadeTime / 1000)
+    );
+  }, [currentState, isChatOpen, volume, fadeTime, isInitialized]);
+
+  // 클린업
+  useEffect(() => {
+    return () => {
+      if (sourceNodeRef.current) {
+        sourceNodeRef.current.stop();
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  return null;
+};
+
+export default BackgroundMusic;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\CameraController.jsx
+
+import { useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
+
+const CameraController = ({ currentState, currentTheme, spacing, centerOffset }) => {
+  const { camera } = useThree();
+  const lerpSpeed = 3; // 초당 보간 속도
+  
+  useFrame((state, delta) => {
+    const targetX = (currentTheme * spacing) - centerOffset;
+    const targetY = currentState === 'active' ? 1.42 : 0;
+    const targetZoom = currentState === 'active' ? 500 : 200;
+    
+    // deltaTime을 이용한 보간
+    const xDelta = (targetX - camera.position.x) * (currentState === 'active' ? 1.5 : 1.0) * lerpSpeed * delta;
+    const yDelta = (targetY - camera.position.y) * 1.4 * lerpSpeed * delta;
+    const zoomDelta = (targetZoom - camera.zoom) * lerpSpeed * delta;
+    
+    camera.position.x += xDelta;
+    camera.position.y += yDelta;
+    camera.zoom += zoomDelta;
+    
+    camera.rotation.set(0, 0, 0);
+    camera.updateProjectionMatrix();
+  });
+
+  return null;
+};
+
+export default CameraController;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\ChatInterface.jsx
+
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Minus, X, Percent } from 'lucide-react';
+import chatService from '../services/aiChatService';
+import { sounds } from '../utils/soundEffects';
+
+const LoadingDots = () => (
+  <div className="flex space-x-2 items-center">
+    {[0, 1, 2].map((i) => (
+      <motion.span
+        key={i}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse", delay: i * 0.2 }}
+        className="w-2 h-2 bg-gray-400 rounded-full"
+      />
+    ))}
+  </div>
+);
+
+const getSessionStyling = () => {
+  const ICONS = [Plus, Minus, X, Percent];
+  const aiIconIndex = Math.floor(Math.random() * ICONS.length);
+  let userIconIndex;
+  do {
+    userIconIndex = Math.floor(Math.random() * ICONS.length);
+  } while (userIconIndex === aiIconIndex);
+  
+  const hue = Math.floor(Math.random() * 360);
+  const userColor = `hsla(${hue}, 85%, 85%, 0.7)`;
+  
+  return {
+    aiIcon: ICONS[aiIconIndex],
+    userIcon: ICONS[userIconIndex],
+    userColor,
+  };
+};
+
+const ChatMessage = React.memo(({ 
+  message, 
+  isAI, 
+  isLoading, 
+  distance, 
+  themeColor,
+  sessionStyling 
+}) => {
+  const IconComponent = isAI ? sessionStyling.aiIcon : sessionStyling.userIcon;
+  const backgroundColor = isAI 
+    ? `rgba(${themeColor.replace('#', '').match(/.{2}/g).map(x => parseInt(x, 16)).join(', ')}, 0.15)` 
+    : sessionStyling.userColor;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: Math.max(0.2, 1 - (distance * 0.08)), y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      transition={{ duration: 0.3 }}
+      className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-6`}
+    >
+      <div className={`flex items-start gap-4 ${isAI ? 'ml-12 max-w-[70%]' : 'mr-12'}`}>
+        {isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+        <div
+          className={`rounded-2xl px-6 py-4 shadow-[0px_4px_8px_rgba(0,0,0,0.04)] ${
+            isAI ? 'bg-white/80' : 'bg-[#d7d7d7]/70'  
+          } text-base backdrop-blur-[4px]`}
+          style={{ 
+            minHeight: '50px',
+            display: 'flex', 
+            alignItems: 'center', 
+            backdropFilter: 'blur(2px)',
+            maxWidth: '100%',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {isLoading ? <LoadingDots /> : message}
+        </div>
+        {!isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
+const ChatInterface = ({ 
+  isOpen, 
+  isClosing, 
+  currentQuestion, 
+  currentTheme, 
+  onClose, 
+  themeColor, 
+  onInteraction 
+}) => {
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [conversationCount, setConversationCount] = useState(0);
+  const [isExhibitionEnding, setIsExhibitionEnding] = useState(false);
+  const [isFinalMessage, setIsFinalMessage] = useState(false);
+  const [isClosingSequence, setIsClosingSequence] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState([]);
+  const [sessionStyling] = useState(getSessionStyling);
+
+  const inputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const isProcessingRef = useRef(false);
+  
+  const MESSAGE_DELAY = 2000;
+
+  const resetChatState = () => {
+    setMessages([]);
+    setInputValue('');
+    setShouldAutoScroll(true);
+    setConversationCount(0);
+    setIsExhibitionEnding(false);
+    setIsFinalMessage(false);
+    setIsClosingSequence(false);
+    setConversationHistory([]);
+    isProcessingRef.current = false;
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  };
+
+  const createGradient = (color, type = 'vertical') => {
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+
+    return type === 'vertical'
+      ? `linear-gradient(180deg, 
+          rgba(${r},${g},${b},0.50) 0%,
+          rgba(${r},${g},${b},0.40) 60%,
+          rgba(${r},${g},${b},0.20) 80%,
+          rgba(${r},${g},${b},0) 100%)`
+      : `linear-gradient(90deg,
+          rgba(${r},${g},${b},0.25) 0%,
+          rgba(${r},${g},${b},0.16) 20%,
+          rgba(${r},${g},${b},0.08) 40%,
+          rgba(${r},${g},${b},0.04) 50%,
+          rgba(${r},${g},${b},0.08) 60%,
+          rgba(${r},${g},${b},0.16) 80%,
+          rgba(${r},${g},${b},0.25) 100%)`;
+  };
+
+  const scrollToBottom = () => {
+    if (shouldAutoScroll && messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  };
+
+  const handleScroll = () => {
+    if (!messagesContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 10;
+    setShouldAutoScroll(isAtBottom);
+  };
+
+  const addAIMessage = async (message, showLoading = true, delay = MESSAGE_DELAY) => {
+    if (showLoading) {
+      setMessages(prev => [...prev, { text: '', isAI: true, isLoading: true }]);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      setMessages(prev => prev.filter(msg => !msg.isLoading));
+    }
+    sounds.aiMessage();
+    setMessages(prev => [...prev, { text: message, isAI: true }]);
+  };
+
+  const playEndingSequence = async () => {
+    setIsClosingSequence(true);
+    
+    await addAIMessage("소중한 기억을 나눠주셔서 감사합니다.", true, MESSAGE_DELAY);
+    await addAIMessage("이 순간도 좋은 기억으로 남길 바랍니다.", true, MESSAGE_DELAY);
+    await addAIMessage("안녕히 가세요!", true, MESSAGE_DELAY/2);
+    
+    sounds.special();
+
+    await new Promise(resolve => setTimeout(resolve, 7000));
+    resetChatState();
+    onClose();
+    if (window.resetToIdle) {
+      window.resetToIdle();
+    }
+  };
+
+  // 채팅이 닫힐 때 상태 초기화
+  useEffect(() => {
+    if (!isOpen && !isClosing) {
+      resetChatState();
+    }
+  }, [isOpen, isClosing]);
+
+  // 테마 변경 시 대화 상태 초기화
+  useEffect(() => {
+    if (isOpen) {
+      resetChatState();
+      const initChat = async () => {
+        try {
+          setMessages([{ text: "안녕하세요! (대화를 중단하시려면 esc 버튼을 누르시면 됩니다~)", isAI: true }]);
+          const firstQuestion = await chatService.getInitialQuestion(currentQuestion);
+          await addAIMessage(firstQuestion, true, MESSAGE_DELAY);
+          setConversationHistory([{ role: "assistant", content: firstQuestion }]);
+        } catch (error) {
+          console.error('Chat initialization error:', error);
+          await addAIMessage(currentQuestion, true, MESSAGE_DELAY);
+        }
+      };
+      initChat();
+    }
+  }, [currentTheme, isOpen]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleInputChange = (e) => {
+    setInputValue(e.target.value);
+    onInteraction?.();
+    
+    if (e.target.value) {
+      const hasTypingMessage = messages.some(msg => msg.isTypingMessage);
+      if (!hasTypingMessage) {
+        setMessages(prev => [...prev, { text: '', isAI: false, isLoading: true, isTypingMessage: true }]);
+      }
+    } else {
+      setMessages(prev => prev.filter(msg => !msg.isTypingMessage));
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isProcessingRef.current || isClosingSequence) return;
+
+    onInteraction?.();
+    isProcessingRef.current = true;
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+
+    const userMessage = inputValue;
+    setInputValue('');
+    
+    sounds.userMessage();
+    
+    setMessages(prev => {
+      const filteredMessages = prev.filter(msg => !msg.isTypingMessage);
+      return [...filteredMessages, { text: userMessage, isAI: false }];
+    });
+
+    const newHistory = [...conversationHistory, { role: "user", content: userMessage }];
+    setConversationHistory(newHistory);
+
+    if (isFinalMessage) {
+      await playEndingSequence();
+    } else {
+      const newCount = conversationCount + 1;
+      setConversationCount(newCount);
+
+      if (newCount >= 3) {
+        setIsExhibitionEnding(true);
+        setIsFinalMessage(true);
+        await addAIMessage("좋아요~ 아쉽게도 이제 대화를 마무리할 시간이네요.", true, MESSAGE_DELAY);
+        await addAIMessage("다른 작품들도 재미있으니 즐겁게 관람하시길 바랍니다!", true, MESSAGE_DELAY);
+        await addAIMessage("관람 후기에 대한 한 줄 소감 부탁드려요~!", true, MESSAGE_DELAY);
+      } else {
+        const aiResponse = await chatService.sendMessage(
+          userMessage,
+          currentQuestion,
+          newHistory
+        );
+        await addAIMessage(aiResponse, true, MESSAGE_DELAY);
+        setConversationHistory(prev => [...prev, { role: "assistant", content: aiResponse }]);
+      }
+    }
+    
+    isProcessingRef.current = false;
+  };
+
+  const handleChatClose = () => {
+    sounds.close();
+    setIsChatClosing(true);
+    setIsChatOpen(false);
+    
+    setTimeout(() => {
+      setIsChatClosing(false);
+      resetChatState();
+    }, 500);
+  };
+
+  if (!isOpen && !isClosing) return null;
+
+  return (
+    <AnimatePresence mode="wait">
+      {(isOpen || isClosing) && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <motion.div 
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ 
+                opacity: isClosing ? 0 : 1,
+                y: isClosing ? 100 : 0
+              }}
+              transition={{ 
+                duration: 0.5,
+                ease: "easeInOut"
+              }}
+              className="bg-[#F5F5F5]/70 backdrop-blur-[4px] rounded-[30px] w-[1300px] h-[875px] mx-4 flex flex-col shadow-[0px_0px_20px_5px_rgba(0,0,0,0.07)] relative"
+            >
+              <div 
+                className="absolute inset-0 rounded-[30px] pointer-events-none"
+                style={{
+                  background: createGradient(themeColor),
+                  height: '400px'
+                }}
+              />
+
+              <div 
+                ref={messagesContainerRef}
+                className="flex-1 overflow-y-auto scrollbar-hide flex flex-col"
+                style={{ 
+                  marginTop: '100px',
+                  marginBottom: '80px',
+                  maskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
+                  WebkitMaskImage: 'linear-gradient(to top, black 85%, transparent 100%)'
+                }}
+              >
+                <div className="flex-grow" />
+                {messages.map((msg, idx) => (
+                  <ChatMessage 
+                    key={idx}
+                    message={msg.text}
+                    isAI={msg.isAI}
+                    isLoading={msg.isLoading}
+                    distance={messages.length - idx - 1}
+                    themeColor={themeColor}
+                    sessionStyling={sessionStyling}
+                  />
+                ))}
+                <div className="flex-grow" />
+              </div>
+
+              <div className="px-8 pb-8 flex justify-center">
+                <div className="w-[1200px] bg-white/70 backdrop-blur-[4px] rounded-xl overflow-hidden shadow-[0px_2px_10px_rgba(0,0,0,0.06)]">
+                  <form onSubmit={handleSubmit} className="h-[50px] p-0">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={inputValue}
+                      onChange={handleInputChange}
+                      onFocus={() => onInteraction?.()}
+                      disabled={isClosingSequence}
+                      className="w-full h-full px-6 text-base focus:outline-none border-none bg-transparent"
+                      placeholder={isClosingSequence ? "" : "Type your message..."}
+                    />
+                  </form>
+                  <div className="h-[50px] relative">
+                    <div 
+                      className="absolute inset-0"
+                      style={{ background: createGradient(themeColor, 'horizontal') }}
+                    />
+                    <img 
+                      src="/images/brandBar.png"
+                      alt="Brand"
+                      className="w-full h-full object-contain relative z-10 scale-95"
+                    />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+export default ChatInterface;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\ChatMessage.jsx
+
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Plus, Minus, X, Percent } from 'lucide-react';
+
+const ICONS = [Plus, Minus, X, Percent];
+
+const getDistinctIconPair = () => {
+  // 0부터 3까지의 숫자 중 랜덤하게 하나 선택 (AI용)
+  const aiIconIndex = Math.floor(Math.random() * ICONS.length);
+  
+  // 남은 숫자들 중에서 랜덤하게 하나 선택 (사용자용)
+  let userIconIndex;
+  do {
+    userIconIndex = Math.floor(Math.random() * ICONS.length);
+  } while (userIconIndex === aiIconIndex);
+  
+  return {
+    aiIcon: ICONS[aiIconIndex],
+    userIcon: ICONS[userIconIndex]
+  };
+};
+
+const ChatMessage = React.memo(({ message, isAI, isLoading, distance, themeColor, iconType, userColor }) => {
+  const IconComponent = ICONS[iconType];
+  const backgroundColor = isAI ? 
+    `rgba(${themeColor.replace('#', '').match(/.{2}/g).map(x => parseInt(x, 16)).join(', ')}, 0.15)` : 
+    white;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: Math.max(0.2, 1 - (distance * 0.08)), y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      transition={{ duration: 0.3 }}
+      className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-6`}
+    >
+      <div className={`flex items-start gap-4 ${isAI ? 'ml-12 max-w-[70%]' : 'mr-12'}`}>
+        {isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+        <div className={`rounded-2xl px-6 py-4 shadow-[0px_4px_8px_rgba(0,0,0,0.04)] ${
+          isAI ? 'bg-white/80' : 'bg-[#d7d7d7]/70'  
+        } text-base backdrop-blur-[4px]`}
+          style={{ 
+            minHeight: '50px',
+            display: 'flex', 
+            alignItems: 'center', 
+            backdropFilter: 'blur(2px)',
+            maxWidth: '100%',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {isLoading ? <LoadingDots /> : message}
+        </div>
+        {!isAI && (
+          <div 
+            className="w-[50px] h-[50px] rounded-full shadow-md flex-shrink-0 flex items-center justify-center"
+            style={{ backgroundColor }}
+          >
+            <IconComponent 
+              size={28} 
+              className="text-gray-800"
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
+export default React.memo(ChatMessage);
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\Scene3D.jsx
+
+import React, { useMemo, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrthographicCamera } from '@react-three/drei';
+import * as THREE from 'three';
+import ThemeSphere from './ThemeSphere';
+import CameraController from './CameraController';
+import { initialThemeData } from '../themes';  // import 수정
+
+// 그림자 텍스처 생성
+const createShadowTexture = () => {
+  const canvas = document.createElement('canvas');
+  const size = 128;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  const gradient = ctx.createRadialGradient(
+    size/2, size/2, 0,
+    size/2, size/2, size/2
+  );
+  gradient.addColorStop(0, 'rgba(0,0,0,0.5)');
+  gradient.addColorStop(0.5, 'rgba(0,0,0,0.3)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  const imageData = ctx.getImageData(0, 0, size, size);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const noise = (Math.random() - 0.5) * 15;
+    data[i + 3] = Math.max(0, Math.min(255, data[i + 3] + noise));
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  return canvas;
+};
+
+// 애니메이션이 있는 그림자 스프라이트 컴포넌트
+const AnimatedShadow = React.memo(({ position, isActive, state }) => {
+  const sprite = useRef();
+  const scaleRef = useRef(0.8);
+  const targetScale = isActive ? (state === 'active' ? 1.8 : 1) : 0.6;
+  const positionY = useRef(-0.7);
+
+  const texture = useMemo(() => {
+    const canvas = createShadowTexture();
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  useFrame((_, delta) => {
+    if (!sprite.current) return;
+    
+    const lerpSpeed = 5;
+    
+    // 크기 애니메이션
+    const scaleDelta = (targetScale - scaleRef.current) * lerpSpeed * delta;
+    scaleRef.current += scaleDelta;
+    sprite.current.scale.setScalar(scaleRef.current);
+
+    // y 위치 애니메이션
+    let targetY = -0.3;
+    if (state !== 'active') {
+      const time = _.clock.getElapsedTime();
+      const baseFreq = 0.6;
+      const waveSpeed = 2;
+      const amplitude = 0.1;
+      const wave = Math.sin(time * waveSpeed + position[0] * baseFreq) * amplitude;
+      targetY += wave * 0.9;
+    }
+    
+    const yDelta = (targetY - positionY.current) * lerpSpeed * delta;
+    positionY.current += yDelta;
+    
+    sprite.current.position.set(
+      position[0],
+      positionY.current,
+      position[2] - 0.01
+    );
+  });
+
+  return (
+    <sprite ref={sprite} position={[position[0], positionY.current, position[2] - 0.01]}>
+      <spriteMaterial
+        transparent
+        opacity={isActive ? 0.3 : 0.2}
+        map={texture}
+        depthWrite={false}
+      />
+    </sprite>
+  );
+});
+
+const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialThemeData }) => {  // themes prop 추가 및 기본값 설정
+  const spacing = 1.5;
+  const decorationCount = 3;
+  const centerOffset = ((themes.length - 1) * spacing) / 2;  // themeData를 themes로 변경
+  
+  const getThemePosition = (index) => [
+    index * spacing - centerOffset,
+    0,
+    -1
+  ];
+
+  const createDecorationPositions = () => {
+    const positions = [];
+    for (let i = 1; i <= decorationCount; i++) {
+      positions.push([-centerOffset - (i * spacing), 0, -1]);
+    }
+    for (let i = 1; i <= decorationCount; i++) {
+      positions.push([centerOffset + (i * spacing), 0, -1]);
+    }
+    return positions;
+  };
+
+  const decorationPositions = createDecorationPositions();
+
+  return (
+    <Canvas 
+      dpr={[1, 2]}
+      performance={{ min: 0.5 }}
+    >
+      <color attach="background" args={['#FFFFFF']} />
+
+      <OrthographicCamera 
+        makeDefault 
+        position={[0, 0, 5]} 
+        zoom={150}
+        rotation={[0, 0, 0]}
+      />
+      
+      <CameraController
+        currentState={currentState}
+        currentTheme={currentTheme}
+        spacing={spacing}
+        centerOffset={centerOffset}
+      />
+      
+      <ambientLight intensity={1.5} />
+      <directionalLight position={[0, 4, 10]} intensity={3} />
+      <directionalLight position={[-3, 3, 5]} intensity={0.4} />
+
+      {/* 배경 평면 */}
+      <mesh position={[0, -0.7, -2]}>
+        <planeGeometry args={[50, 50]} />
+        <meshStandardMaterial 
+          color="#FFFFFF"
+          roughness={1}
+          metalness={0}
+        />
+      </mesh>
+      
+      {/* 장식용 그림자 */}
+      {React.useMemo(() => 
+        decorationPositions.map((position, i) => (
+          <AnimatedShadow
+            key={`decoration-shadow-${i}`}
+            position={position}
+            isActive={false}
+            state={currentState}
+          />
+        ))
+      , [currentState])}
+      
+      {/* 테마 그림자 */}
+      {React.useMemo(() => 
+        themes.map((theme, i) => (
+          <AnimatedShadow
+            key={`theme-shadow-${i}`}
+            position={getThemePosition(i)}
+            isActive={Math.round(currentTheme) === i}
+            state={currentState}
+          />
+        ))
+      , [currentTheme, currentState, themes])}
+      
+      {/* 장식용 구들 */}
+      {React.useMemo(() => 
+        decorationPositions.map((position, i) => (
+          <ThemeSphere
+            key={`decoration-${i}`}
+            position={position}
+            isActive={false}
+            state={currentState}
+            isDecoration={true}
+            color={'#cccccc'}
+          />
+        ))
+      , [currentState])}
+      
+      {React.useMemo(() => 
+        themes.map((theme, i) => (
+          <ThemeSphere
+            key={theme.id}
+            position={getThemePosition(i)}
+            color={theme.color}
+            isActive={Math.round(currentTheme) === i}
+            state={currentState}
+            isChatOpen={isChatOpen}
+          />
+        ))
+      , [currentTheme, currentState, isChatOpen, themes])}
+    </Canvas>
+  );
+};
+
+export default React.memo(Scene3D);
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\StartGuide.jsx
+
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { HandMetal, ArrowLeftRight, Star } from 'lucide-react';
+import { sounds } from '../utils/soundEffects';
+
+const FIRST_GREETINGS = [
+  "반가워요!",
+  "안녕하세요!",
+  "환영합니다!",
+  "어서오세요!",
+  "만나서 반가워요!",
+  "좋은 하루예요!",
+];
+
+const SECOND_GREETINGS = [
+  "이야기 나누러 오셨나요?",
+  "오늘 하루는 어떠셨나요?",
+  "잠시 쉬어가시겠어요?",
+  "특별한 순간을 공유해주세요",
+  "기억에 남는 순간이 있나요?",
+  "함께 이야기를 나눠볼까요?",
+  "편하게 이야기해주세요",
+  "여기서 잠시 머물러보세요",
+  "당신의 이야기가 궁금해요",
+  "무슨 이야기를 들려주실 건가요?"
+];
+
+const StartGuide = ({ 
+  isVisible, 
+  duration = 8000,
+  onKeyInteraction = false,
+  currentState
+}) => {
+  const [showGuide, setShowGuide] = useState(false);
+  const [firstGreeting, setFirstGreeting] = useState(FIRST_GREETINGS[0]);
+  const [secondGreeting, setSecondGreeting] = useState(SECOND_GREETINGS[0]);
+  const [exitFast, setExitFast] = useState(false);
+  const [hasPlayedWelcome, setHasPlayedWelcome] = useState(false);
+
+  const selectNewGreetings = () => {
+    const newFirstGreeting = FIRST_GREETINGS[Math.floor(Math.random() * FIRST_GREETINGS.length)];
+    const newSecondGreeting = SECOND_GREETINGS[Math.floor(Math.random() * SECOND_GREETINGS.length)];
+    
+    if (newFirstGreeting === firstGreeting && FIRST_GREETINGS.length > 1) {
+      selectNewGreetings();
+      return;
+    }
+    if (newSecondGreeting === secondGreeting && SECOND_GREETINGS.length > 1) {
+      selectNewGreetings();
+      return;
+    }
+
+    setFirstGreeting(newFirstGreeting);
+    setSecondGreeting(newSecondGreeting);
+  };
+
+  useEffect(() => {
+    if (isVisible) {
+      setShowGuide(true);
+      setExitFast(false);
+      
+      // 가이드가 처음 나타날 때만 효과음 재생
+      if (!hasPlayedWelcome) {
+        sounds.welcome();
+        setHasPlayedWelcome(true);
+      }
+
+      if (!onKeyInteraction) {
+        const timer = setTimeout(() => {
+          setShowGuide(false);
+        }, duration);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      // 키 상호작용으로 인한 종료인 경우 빠른 종료 설정
+      setExitFast(onKeyInteraction);
+      setShowGuide(false);
+      
+      // 가이드가 사라질 때 hasPlayedWelcome 초기화
+      if (!isVisible && hasPlayedWelcome) {
+        setHasPlayedWelcome(false);
+      }
+    }
+  }, [isVisible, duration, onKeyInteraction, currentState, hasPlayedWelcome]);
+
+  const exitDuration = exitFast ? 0.25 : 0.5;  // 빠른 종료시 0.25초, 일반 종료시 0.5초
+
+  return (
+    <AnimatePresence 
+      mode="wait"
+      onExitComplete={selectNewGreetings}
+    >
+      {showGuide && (
+        <motion.div 
+          className="fixed inset-0 pointer-events-none"
+          initial={{ opacity: 1 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: exitDuration, ease: "easeInOut" }}
+        >
+          <div className="fixed inset-0 flex flex-col justify-between py-32">
+            <motion.div
+              className="flex justify-center items-center"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: exitDuration + 0.3 }}
+            >
+              <motion.div
+                className="flex flex-col items-center gap-4"
+                animate={{ opacity: [0.8, 1, 0.8] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <div className="flex items-center gap-4">
+                  <HandMetal size={56} className="text-indigo-500" />
+                  <span className="text-6xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-500 to-pink-500 text-transparent bg-clip-text">
+                    {firstGreeting}
+                  </span>
+                </div>
+                <span className="text-6xl font-extrabold text-gray-800">
+                  {secondGreeting}
+                </span>
+              </motion.div>
+            </motion.div>
+
+            <motion.div
+              className="flex justify-center gap-32"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: exitDuration + 0.3, delay: 0.2 }}
+            >
+              <motion.div
+                className="flex flex-col items-center gap-4"
+                animate={{ opacity: [0.8, 1, 0.8] }}
+                transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
+              >
+                <span className="text-4xl font-black text-gray-800">시작</span>
+                <span className="text-2xl font-bold text-gray-600">스페이스 or 엔터</span>
+              </motion.div>
+
+              <motion.div 
+                className="flex flex-col items-center gap-4"
+                animate={{ opacity: [0.8, 1, 0.8] }}
+                transition={{ duration: 2, repeat: Infinity, delay: 0.9 }}
+              >
+                <span className="text-4xl font-black text-gray-800">이동</span>
+                <div className="flex items-center gap-3">
+                  <ArrowLeftRight size={32} className="text-gray-600" />
+                  <span className="text-2xl font-bold text-gray-600">방향키</span>
+                </div>
+              </motion.div>
+            </motion.div>
+
+            <motion.div
+              className="fixed bottom-8 right-10 text-gray-600 flex items-center gap-3"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.9 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: exitDuration + 0.7 }}
+            >
+              <Star size={24} className="text-yellow-500" />
+              <span className="text-2xl">Powered by</span>
+              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
+                이승훈
+              </span>
+            </motion.div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+export default StartGuide;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\ThemeSphere.jsx
+
+import React, { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { MeshTransmissionMaterial } from '@react-three/drei';
+import * as THREE from 'three';
+
+const useSphereAnimation = (group, scaleRef, position, targetScale, state, isActive = false, isChatOpen = false) => {
+  const positionY = useRef(position[1]);
+
+  useFrame((_, delta) => {
+    if (!group.current) return;
+    
+    const lerpSpeed = 5;
+    
+    const scaleDelta = (targetScale - scaleRef.current) * lerpSpeed * delta;
+    scaleRef.current += scaleDelta;
+    group.current.scale.setScalar(scaleRef.current);
+    
+    let targetY = position[1];
+    
+    if (state === 'active' && isActive) {
+      targetY += isChatOpen ? 1.5 : 0.3;
+    } 
+    else if (state !== 'active') {
+      const time = _.clock.getElapsedTime();
+      const baseFreq = 0.6;
+      const waveSpeed = 2;
+      const amplitude = 0.1;
+      const wave = Math.sin(time * waveSpeed + position[0] * baseFreq) * amplitude;
+      targetY += wave;
+    }
+    
+    const yDelta = (targetY - positionY.current) * (lerpSpeed) * delta;
+    positionY.current += yDelta;
+    
+    group.current.position.set(
+      position[0],
+      positionY.current,
+      position[2]
+    );
+  });
+};
+
+const DecorationSphere = ({ position, state }) => {
+  const group = useRef();
+  const scaleRef = useRef(1);
+  
+  useSphereAnimation(group, scaleRef, position, 0.8, state);
+
+  return (
+    <group ref={group} position={position}>
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.4, 64, 64]} />
+        <MeshTransmissionMaterial
+          resolution={512}
+          thickness={0.06}
+          roughness={0.7}
+          clearcoat={0.4}
+          clearcoatRoughness={0.6}
+          transmission={1}
+          ior={2.2}
+          chromaticAberration={0.2}
+          anisotropy={0.7}
+          distortion={0}
+          distortionScale={0}
+          temporalDistortion={0}
+          color="#ffffff"
+        />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.32 * 0.8, 32, 32]} />
+        <meshStandardMaterial
+          color="#555555"
+          roughness={0.7}
+          metalness={0.9}
+        />
+      </mesh>
+    </group>
+  );
+};
+
+const ThemeSphereOuter = ({ position, isActive, state, children, isChatOpen }) => {
+  const group = useRef();
+  const scaleRef = useRef(1);
+  const targetScale = isActive ? (state === 'active' ? 1.8 : 1.2) : 0.8;
+
+  useSphereAnimation(group, scaleRef, position, targetScale, state, isActive, isChatOpen);
+
+  return (
+    <group ref={group} position={position}>
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.4, 64, 64]} />
+        <MeshTransmissionMaterial
+          samples={16}
+          resolution={512}
+          thickness={0.07}
+          roughness={0.7}
+          clearcoat={0.4}
+          clearcoatRoughness={0.6}
+          transmission={1}
+          ior={2.2}
+          chromaticAberration={0.6}
+          anisotropy={0.7}
+          distortion={8}
+          distortionScale={0.8}
+          temporalDistortion={0.2}
+          color="#ffffff"
+        />
+      </mesh>
+      {children}
+    </group>
+  );
+};
+
+const ThemeSphereInner = ({ color }) => {
+  return (
+    <mesh>
+      <sphereGeometry args={[0.32 * 0.8, 32, 32]} />
+      <meshPhysicalMaterial
+        color={color}
+        emissive={color}
+        emissiveIntensity={0.3}
+        roughness={0.7}
+        metalness={0.1}
+      />
+    </mesh>
+  );
+};
+
+const ThemeSphere = ({ position, color, isActive, state, isDecoration = false, isChatOpen = false }) => {
+  if (isDecoration) {
+    return <DecorationSphere position={position} state={state} />;
+  }
+
+  return (
+    <ThemeSphereOuter position={position} isActive={isActive} state={state} isChatOpen={isChatOpen}>
+      <ThemeSphereInner color={color} />
+    </ThemeSphereOuter>
+  );
+};
+
+export default ThemeSphere;
+export { ThemeSphereOuter, ThemeSphereInner };
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\ThemeText.jsx
+
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+const BrandBar = ({ color, textState, isChatOpen }) => (
+  <AnimatePresence mode="sync">
+    {textState !== 'none' && !isChatOpen && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5 }}
+        className="fixed w-[1100px] left-1/2 -translate-x-1/2 top-14"
+      >
+        <svg 
+          width="1159" 
+          height="22" 
+          viewBox="0 0 1159 22" 
+          fill="none" 
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-full drop-shadow-sm"
+        >
+          <path d="M1126.57 1.79326H1121.12C1121.12 3.95973 1119.36 5.71209 1117.2 5.71209C1115.03 5.71209 1113.28 3.95468 1113.28 1.79326H1107.83C1107.83 6.96955 1112.03 11.1611 1117.2 11.1611C1122.37 11.1611 1126.57 6.96955 1126.57 1.79326Z" fill={color}/>
+          <path d="M1117.2 11.161C1112.03 11.161 1107.83 15.3525 1107.83 20.5288H1113.28C1113.28 18.3624 1115.03 16.61 1117.2 16.61C1119.36 16.61 1121.11 18.3674 1121.11 20.5288H1126.56C1126.57 15.3525 1122.37 11.161 1117.2 11.161Z" fill={color}/>
+          <path d="M1152.15 6.8332C1148.37 6.8332 1145.3 9.89901 1145.3 13.681C1145.3 17.463 1148.37 20.5289 1152.15 20.5289C1155.93 20.5289 1159 17.463 1159 13.681C1159 9.89901 1155.93 6.8332 1152.15 6.8332ZM1155.83 14.8759C1156.58 15.8589 1155.59 17.2255 1154.42 16.809C1154.46 18.0514 1152.85 18.5739 1152.15 17.5471C1151.45 18.5702 1149.85 18.0514 1149.88 16.809C1148.71 17.2255 1147.72 15.8589 1148.48 14.8759C1147.28 14.5251 1147.28 12.8369 1148.48 12.4861C1147.72 11.5032 1148.71 10.1365 1149.88 10.5531C1149.85 9.3107 1151.45 8.78816 1152.15 9.81497C1152.85 8.79181 1154.46 9.3107 1154.42 10.5531C1155.59 10.1365 1156.59 11.5032 1155.83 12.4861C1157.02 12.8369 1157.02 14.5251 1155.83 14.8759Z" fill={color}/>
+          <path d="M1152.12 2.05715C1152.47 1.56037 1153.24 1.81336 1153.23 2.41478C1153.8 2.21354 1154.28 2.87476 1153.91 3.35084C1154.49 3.52103 1154.49 4.33864 1153.91 4.50883C1154.28 4.98606 1153.8 5.64728 1153.23 5.44489C1153.24 6.04631 1152.46 6.2993 1152.12 5.80252C1151.78 6.2993 1151 6.04631 1151.02 5.44489C1150.45 5.64613 1149.97 4.98491 1150.34 4.50883C1149.76 4.33864 1149.76 3.52103 1150.34 3.35084C1149.97 2.87361 1150.45 2.21239 1151.02 2.41478C1151 1.81336 1151.78 1.56037 1152.12 2.05715Z" fill={color}/>
+          <path d="M1087.24 13.1999C1086.01 13.3468 1084.79 13.4446 1083.57 13.102C1085.13 13.0042 1086.65 12.3679 1087.77 11.2423C1088.12 10.8507 1088.41 10.4592 1088.61 9.96976C1088.8 9.38245 1088.95 8.7462 1088.95 8.10996C1088.9 7.32688 1088.56 6.25016 1087.63 6.39698C1087.19 6.44593 1086.85 6.73958 1086.6 7.13111C1086.31 7.62054 1086.01 7.96313 1085.67 8.35467C1085.13 8.89303 1084.55 9.43139 1083.81 9.72505C1084.99 8.55044 1085.62 6.78852 1085.57 5.12449C1085.52 4.24353 1085.13 3.46046 1084.59 2.72633C1084.06 2.09008 1083.22 1.45383 1082.39 1.74748C1081.61 1.9922 1081.81 3.06892 1081.95 3.75411C1082.05 4.58613 1082.1 5.3692 1081.95 6.25016C1081.9 6.49487 1081.9 6.73958 1081.76 6.93535C1081.61 4.87978 1080.58 2.77527 1078.63 1.9922C1077.74 1.60066 1076.72 1.45383 1075.79 1.84537C1075.45 1.9922 1075.05 2.18796 1075 2.62844C1074.91 3.36257 1075.59 3.85199 1076.18 4.19459C1076.33 4.34142 1076.47 4.4393 1076.67 4.58613C1077.4 5.17343 1077.99 5.90756 1078.43 6.73958C1077.35 5.71179 1075.93 5.17343 1074.47 5.0266C1073.24 4.92872 1072.02 5.41814 1071.14 6.34804C1070.65 6.8864 1070.21 7.57159 1070.45 8.35467C1070.94 9.03986 1071.87 8.84409 1072.61 8.69726C1073.64 8.50149 1074.61 8.59938 1075.59 8.84409C1074.66 8.89303 1073.73 9.23562 1072.9 9.6761C1072.17 10.1166 1071.53 10.5571 1071.09 11.2912C1070.45 12.319 1070.16 13.5425 1070.55 14.6682C1070.75 15.1576 1071.09 15.647 1071.63 15.647C1071.97 15.5981 1072.27 15.4023 1072.51 15.1087C1073.29 14.0319 1074.08 13.0042 1075.2 12.3679C1074.37 13.3957 1073.93 14.6193 1073.73 15.9407C1073.64 16.7727 1073.83 17.5558 1074.22 18.2899C1074.42 18.6325 1074.61 18.9262 1074.86 19.2198C1075.05 19.4156 1075.25 19.5624 1075.49 19.7582C1075.93 20.0518 1076.42 20.2476 1076.91 20.1008C1077.6 19.8071 1077.55 18.9751 1077.45 18.3389C1077.21 17.1642 1077.26 16.0386 1077.5 14.9129C1077.65 16.3812 1078.19 17.7515 1079.16 18.8283C1080.34 20.0518 1082.34 20.6881 1083.91 19.7092C1084.3 19.4645 1084.35 19.024 1084.2 18.6325C1084.15 18.5836 1084.11 18.4857 1084.06 18.3878C1083.86 18.1431 1083.66 17.9473 1083.37 17.8005L1083.32 17.7026C1082.39 17.1153 1081.61 16.3322 1081.07 15.4023C1082.1 16.2343 1083.32 16.7238 1084.64 16.8706C1086.31 17.0174 1088.02 16.1854 1088.75 14.6682C1088.95 14.2767 1088.95 13.7872 1088.66 13.4446C1088.26 13.102 1087.73 13.102 1087.24 13.1999Z" fill={color}/>
+          <path d="M1049.66 8.5522C1050.88 9.88381 1050.88 11.9192 1049.66 13.2508C1049.12 13.8517 1048.8 14.6247 1048.76 15.4365C1048.67 17.2353 1047.24 18.6745 1045.44 18.7589C1044.62 18.797 1043.85 19.1172 1043.25 19.6642C1041.92 20.8765 1039.88 20.8765 1038.55 19.6642C1037.95 19.1172 1037.18 18.797 1036.37 18.7589C1034.57 18.6745 1033.13 17.2353 1033.04 15.4365C1033.01 14.6247 1032.69 13.8517 1032.14 13.2508C1030.93 11.9192 1030.93 9.88381 1032.14 8.5522C1032.69 7.95127 1033.01 7.17824 1033.04 6.36647C1033.13 4.56768 1034.57 3.12847 1036.37 3.04408C1037.18 3.006 1037.95 2.6858 1038.55 2.13872C1039.88 0.926462 1041.92 0.926462 1043.25 2.13872C1043.85 2.6858 1044.62 3.006 1045.44 3.04408C1047.24 3.12848 1048.67 4.56768 1048.76 6.36647C1048.8 7.17824 1049.12 7.95127 1049.66 8.5522Z" fill={color}/>
+          <path d="M1 11L1009 11.0001" stroke={color} strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
+
+
+const TextContent = ({ text, className = "" }) => (
+  <div className={`flex flex-col items-center space-y-4 absolute w-full ${className}`}>
+    <div className="text-gray-800 text-4xl font-bold">
+      {text}
+    </div>
+    <div className="text-gray-400 text-4xl font-bold opacity-30">
+      {text}
+    </div>
+  </div>
+);
+
+const ThemeText = ({ 
+  textState, 
+  currentText, 
+  previousText, 
+  currentTheme,
+  isTransitioning,
+  themes,
+  isChatOpen
+}) => {
+  if (isTransitioning && textState !== 'transitioning') return null;
+
+  const currentColor = themes?.[Math.round(currentTheme)]?.color || '#ff4b6b';
+
+  return (
+    <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-[1]">
+      <BrandBar color={currentColor} textState={textState} isChatOpen={isChatOpen}/>
+      
+      <AnimatePresence mode="sync">
+        {textState === 'entering' && (
+          <motion.div
+            key={`enter-${currentTheme}`}
+            initial={{ opacity: 0, y: -90 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ 
+              duration: 1.1,
+              ease: "easeOut",
+              delay: 0.1
+            }}
+          >
+            <TextContent text={currentText} />
+          </motion.div>
+        )}
+
+        {textState === 'transitioning' && previousText && (
+          <motion.div
+            key={`prev-${currentTheme}-exit`}
+            initial={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 0, y: -30 }}
+            exit={{ opacity: 0, y: -30 }}
+            transition={{ 
+              duration: 0.5,
+              ease: "easeInOut"
+            }}
+          >
+            <TextContent text={previousText} />
+          </motion.div>
+        )}
+        
+        {textState === 'transitioning' && (
+          <motion.div
+            key={`current-${currentTheme}-enter`}
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ 
+              duration: 0.5,
+              ease: "easeInOut",
+              delay: 0.05
+            }}
+          >
+            <TextContent text={currentText} />
+          </motion.div>
+        )}
+
+        {textState === 'active' && (
+          <TextContent text={currentText} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default ThemeText;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\services\aiChatService.js
+
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+  dangerouslyAllowBrowser: true
+});
+
+const getSystemPrompt = (theme) => {
+  return `당신은 2024 홍익대학교 산업디자인 졸업전시의 공간반 학생 작품 중 '기억의 순간' 인터랙션 체험존을 담당하는 AI 도슨트입니다.
+
+이 체험존은 관람객의 개인적인 기억과 감정을 끌어내어 전시와 공감대를 형성하는 공간입니다. 
+관람객이 자신의 기억을 자연스럽게 공유할 수 있도록 편안한 대화를 이끌어주세요.
+
+현재 질문 주제는 "${theme}"입니다.
+
+다음 지침을 반드시 따라주세요:
+- 답변은 1-2문장으로 매우 간단히 해주세요
+- 관람객의 기억과 감정에 깊이 공감하되, 짧고 핵심적으로 표현해주세요
+- 개인적인 이야기를 더 많이 끌어낼 수 있는 자연스러운 후속 질문을 해주세요
+- 존댓말을 사용하되, 친근하고 편안한 대화를 해주세요
+- 답변이 너무 길어지지 않도록 주의해주세요
+- 인사는 이미 했습니다
+-"전시회가 시작되었군요!" 같은 말 금지
+
+이 체험존의 목적:
+- 관람객의 개인적인 기억과 감정을 끌어내기
+- 관람객이 자신의 이야기를 편안하게 나눌 수 있는 분위기 만들기`;
+};
+
+const DEFAULT_ERROR_MESSAGE = "죄송합니다. 잠시 후 다시 시도해주세요.";
+
+const chatService = {
+  async sendMessage(message, theme, conversationHistory) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: getSystemPrompt(theme)
+          },
+          ...conversationHistory,
+          {
+            role: "user",
+            content: message
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 150
+      });
+
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('AI Chat Error:', error);
+      return DEFAULT_ERROR_MESSAGE;
+    }
+  },
+
+  async getInitialQuestion(theme) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: getSystemPrompt(theme)
+          },
+          {
+            role: "user",
+            content: "전시회 시작"
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 150
+      });
+
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('AI Chat Error:', error);
+      // 오류 발생 시 기본 질문 반환
+      return `${theme}에 대해 이야기를 나눠볼까요?`;
+    }
+  }
+};
+
+export default chatService;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\services\chatStorageService.js
+
+// services/chatStorageService.js
+export const chatStorageService = {
+  async saveConversation(conversationData) {
+    try {
+      const data = {
+        question: conversationData.question,
+        messages: conversationData.history.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      };
+
+      const response = await fetch('http://localhost:3001/api/save-conversation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save conversation');
+      }
+
+    } catch (error) {
+      console.error('Error saving conversation:', error);
+    }
+  }
+};
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\services\visionService.js
+
+class VisionService {
+  constructor() {
+    this.videoElement = null;
+    this.camera = null;
+    this.pose = null;
+    this.isConnected = false;
+    this.onPresenceChange = null;
+    this.isViewerPresent = false;
+    this.lastPresenceTime = Date.now();
+    this.isInitializing = false;
+    this.suspended = false;
+    this.initializationAttempts = 0;
+    this.maxInitAttempts = 5;
+    this.cooldownPeriod = 5000;
+    this.lastAttemptTime = 0;
+    this.retryCount = 0;
+    this.maxRetries = 3;
+    this.processingFrame = false;
+    this.SHOULDER_WIDTH_THRESHOLD = 0.2;
+    this.PRESENCE_TIMEOUT = 2000;
+
+    // 로그 관련 속성
+    this.connectionStartTime = null;
+    this.logInterval = null;
+    this.totalAttempts = 0;
+  }
+
+  logConnectionAttempt() {
+    if (!this.connectionStartTime) {
+      this.connectionStartTime = Date.now();
+      this.totalAttempts = 1;
+    } else {
+      this.totalAttempts++;
+    }
+
+    const elapsedTime = ((Date.now() - this.connectionStartTime) / 1000).toFixed(1);
+    const attempts = this.totalAttempts;
+    
+    console.log(
+      `%c[Vision Service] Reconnecting... (Attempt ${attempts}, Time: ${elapsedTime}s)`,
+      'color: #fbbf24; font-weight: bold;'
+    );
+  }
+
+  startConnectionLog() {
+    if (this.logInterval) return;
+    
+    console.log(
+      '%c[Vision Service] Starting connection process...',
+      'color: #60a5fa; font-weight: bold;'
+    );
+    
+    this.logInterval = setInterval(() => {
+      const dots = '.'.repeat(this.totalAttempts % 4);
+      const spaces = ' '.repeat(3 - (this.totalAttempts % 4));
+      console.log(
+        `%c[Vision Service] Attempting to connect${dots}${spaces}`,
+        'color: #93c5fd;'
+      );
+    }, 1000);
+  }
+
+  stopConnectionLog(success = false) {
+    if (this.logInterval) {
+      clearInterval(this.logInterval);
+      this.logInterval = null;
+    }
+
+    const elapsedTime = ((Date.now() - this.connectionStartTime) / 1000).toFixed(1);
+    const attempts = this.totalAttempts;
+
+    if (success) {
+      console.log(
+        `%c[Vision Service] Connected successfully! (Attempts: ${attempts}, Time: ${elapsedTime}s)`,
+        'color: #34d399; font-weight: bold;'
+      );
+    } else {
+      console.log(
+        `%c[Vision Service] Connection failed after ${attempts} attempts (${elapsedTime}s)`,
+        'color: #f87171; font-weight: bold;'
+      );
+    }
+
+    this.connectionStartTime = null;
+    this.totalAttempts = 0;
+  }
+
+  setupVideoElement() {
+    if (this.videoElement) return this.videoElement;
+
+    const video = document.createElement('video');
+    video.style.cssText = `
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      width: 32px;
+      height: 24px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: -1;
+    `;
+    video.playsInline = true;
+    video.muted = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    document.body.appendChild(video);
+    this.videoElement = video;
+    return video;
+  }
+
+  onResults = (results) => {
+    if (this.suspended || !results.poseLandmarks) {
+      this.updatePresence(false);
+      return;
+    }
+
+    try {
+      const leftShoulder = results.poseLandmarks[11];
+      const rightShoulder = results.poseLandmarks[12];
+      
+      if (!leftShoulder || !rightShoulder) {
+        this.updatePresence(false);
+        return;
+      }
+
+      const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
+      this.updatePresence(shoulderWidth > this.SHOULDER_WIDTH_THRESHOLD);
+    } catch (error) {
+      console.warn('Error processing pose results:', error);
+      this.updatePresence(false);
+    }
+  }
+
+  updatePresence(isDetected) {
+    if (!this.isConnected || this.suspended) return false;
+
+    const currentTime = Date.now();
+    const previousState = this.isViewerPresent;
+
+    if (isDetected) {
+      this.lastPresenceTime = currentTime;
+      if (!this.isViewerPresent) {
+        this.isViewerPresent = true;
+        requestAnimationFrame(() => {
+          if (this.onPresenceChange && !this.suspended) {
+            this.onPresenceChange(true);
+          }
+        });
+      }
+    } else if (this.isViewerPresent) {
+      const timeSinceLastPresence = currentTime - this.lastPresenceTime;
+      if (timeSinceLastPresence > this.PRESENCE_TIMEOUT) {
+        this.isViewerPresent = false;
+        requestAnimationFrame(() => {
+          if (this.onPresenceChange && !this.suspended) {
+            this.onPresenceChange(false);
+          }
+        });
+      }
+    }
+
+    return previousState !== this.isViewerPresent;
+  }
+
+  async initializeMediaPipe() {
+    try {
+      const { Pose } = await import('@mediapipe/pose');
+      
+      const pose = new Pose({
+        locateFile: (file) => {
+          return `/node_modules/@mediapipe/pose/${file}`;
+        }
+      });
+
+      pose.setOptions({
+        modelComplexity: 0,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+        selfieMode: true
+      });
+
+      pose.onResults(this.onResults);
+
+      try {
+        await pose.initialize();
+        return pose;
+      } catch (error) {
+        console.error('Failed to initialize MediaPipe Pose:', error);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Failed to load MediaPipe Pose:', error);
+      throw error;
+    }
+  }
+
+  async processFrame() {
+    if (!this.isConnected || !this.pose || this.suspended || this.processingFrame) return;
+    
+    try {
+      this.processingFrame = true;
+      await this.pose.send({ image: this.videoElement });
+    } catch (error) {
+      console.warn('Frame processing error:', error);
+    } finally {
+      this.processingFrame = false;
+    }
+  }
+
+  async setupCamera() {
+    try {
+      const { Camera } = await import('@mediapipe/camera_utils');
+
+      if (!this.videoElement) {
+        throw new Error('Camera dependencies not initialized');
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: 640,
+            height: 480,
+            facingMode: 'user',
+            frameRate: { ideal: 30 }
+          }
+        });
+
+        this.videoElement.srcObject = stream;
+        await this.videoElement.play();
+
+        const camera = new Camera(this.videoElement, {
+          onFrame: async () => this.processFrame(),
+          width: 640,
+          height: 480
+        });
+
+        return camera;
+      } catch (error) {
+        console.error('Camera setup failed:', error);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Failed to load Camera utils:', error);
+      throw error;
+    }
+  }
+
+  suspend() {
+    if (!this.isConnected) return;
+    console.log('%c[Vision Service] Suspended', 'color: #9ca3af;');
+    this.suspended = true;
+    this.processingFrame = false;
+  }
+
+  resume() {
+    if (!this.isConnected) return;
+    console.log('%c[Vision Service] Resumed', 'color: #9ca3af;');
+    this.suspended = false;
+  }
+
+  async connect() {
+    if (this.isConnected || this.isInitializing) return;
+
+    const currentTime = Date.now();
+    if (currentTime - this.lastAttemptTime < this.cooldownPeriod) {
+      console.warn('Attempting to reconnect too quickly, waiting for cooldown');
+      return;
+    }
+
+    try {
+      this.isInitializing = true;
+      this.lastAttemptTime = currentTime;
+      this.initializationAttempts++;
+
+      if (!this.connectionStartTime) {
+        this.startConnectionLog();
+      }
+      this.logConnectionAttempt();
+
+      if (this.initializationAttempts > this.maxInitAttempts) {
+        console.warn('Max initialization attempts reached, waiting for longer cooldown');
+        await new Promise(resolve => setTimeout(resolve, this.cooldownPeriod * 2));
+        this.initializationAttempts = 0;
+      }
+
+      this.setupVideoElement();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      this.pose = await this.initializeMediaPipe();
+      this.camera = await this.setupCamera();
+      await this.camera.start();
+
+      this.isConnected = true;
+      this.initializationAttempts = 0;
+      this.stopConnectionLog(true);
+
+    } catch (error) {
+      console.error('Vision Service initialization failed:', error);
+      this.disconnect();
+      
+      const retryDelay = Math.min(1000 * Math.pow(2, this.initializationAttempts), 10000);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      
+      if (this.initializationAttempts < this.maxInitAttempts) {
+        return this.connect();
+      } else {
+        this.stopConnectionLog(false);
+      }
+    } finally {
+      this.isInitializing = false;
+    }
+  }
+
+  disconnect() {
+    console.log('%c[Vision Service] Disconnecting...', 'color: #9ca3af;');
+    this.suspended = true;
+    this.processingFrame = false;
+
+    if (this.camera) {
+      this.camera.stop();
+      this.camera = null;
+    }
+
+    if (this.pose) {
+      this.pose.close();
+      this.pose = null;
+    }
+
+    if (this.videoElement?.srcObject) {
+      const tracks = this.videoElement.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
+      this.videoElement.remove();
+      this.videoElement = null;
+    }
+
+    this.isConnected = false;
+    this.isInitializing = false;
+    this.isViewerPresent = false;
+    this.retryCount = 0;
+    
+    if (this.logInterval) {
+      this.stopConnectionLog(false);
+    }
+  }
+}
+
+const visionService = new VisionService();
+export default visionService;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\types\aiTypes.js
+
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\utils\soundEffects.js
+
+// utils/soundEffects.js
+const playSound = (soundName, volume = 1.0) => {
+  try {
+    const audio = new Audio(`/audio/${soundName}.wav`);
+    audio.volume = volume;
+    
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(error => {
+        console.error('Error playing sound:', error);
+      });
+    }
+
+    audio.onended = () => {
+      audio.remove();
+    };
+  } catch (error) {
+    console.error('Error creating audio:', error);
+  }
+};
+
+export const sounds = {
+  // 기본 인터페이스 효과음
+  move: () => playSound('move', 0.5),        // 테마 이동 시
+  select: () => playSound('select', 0.6),    // 테마 선택 시
+  reset: () => playSound('reset', 0.4),      // 초기화/리셋 시
+  close: () => playSound('close', 0.5),      // 채팅창 닫기 시
+  welcome: () => playSound('welcome', 0.6),  // 시작 가이드 표시 시
+  
+  // 채팅 메시지 효과음
+  userMessage: () => playSound('user', 0.45),  // 사용자 메시지 전송 시
+  aiMessage: () => playSound('ai', 0.45),      // AI 응답 시
+  
+  // 특별 효과음
+  special: () => playSound('special', 0.8)     // 엔딩 시퀀스용
+};
+
+export const playSequence = async (soundNames, interval = 200) => {
+  for (let i = 0; i < soundNames.length; i++) {
+    const soundName = soundNames[i];
+    if (sounds[soundName]) {
+      sounds[soundName]();
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+  }
+};
+
+export default sounds;
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\utils\visionWorker.js
+
+// visionWorker.js
+let detectionActive = false;
+
+self.onmessage = async (e) => {
+  const { type, imageData } = e.data;
+  
+  if (type === 'start') {
+    detectionActive = true;
+    self.postMessage({ type: 'started' });
+  }
+  else if (type === 'stop') {
+    detectionActive = false;
+  }
+  else if (type === 'process' && detectionActive) {
+    // 간단한 움직임 감지 - 픽셀 변화 분석
+    try {
+      const data = imageData.data;
+      let movement = 0;
+      
+      // 픽셀 변화량 체크 (단순화된 알고리즘)
+      for (let i = 0; i < data.length; i += 40) {
+        movement += Math.abs(data[i] - (data[i - 4] || 0));
+      }
+      
+      // 임계값 이상의 움직임이 감지되면 presence = true
+      const threshold = 1000;
+      self.postMessage({ 
+        type: 'result', 
+        isPresent: movement > threshold 
+      });
+    } catch (error) {
+      self.postMessage({ type: 'error', error: error.message });
+    }
+  }
+};
