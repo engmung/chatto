@@ -196,53 +196,12 @@ const ChatInterface = ({
   const playEndingSequence = async () => {
     setIsClosingSequence(true);
     
-    await addAIMessage("소중한 기억을 나눠주셔서 감사합니다.", true, MESSAGE_DELAY);
+    await addAIMessage("네, 그럼 소중한 이야기를 나눠주셔서 감사합니다.", true, MESSAGE_DELAY);
     await addAIMessage("이 순간도 좋은 기억으로 남길 바랍니다.", true, MESSAGE_DELAY);
     await addAIMessage("안녕히 가세요!", true, MESSAGE_DELAY/2);
     
     sounds.special();
     
-    await addAIMessage(
-      <div className="flex flex-col items-center pt-8 relative">
-        <div className="w-full h-[3px] bg-gradient-to-r from-transparent via-purple-300 to-transparent mb-6"/>
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-xl font-semibold mb-2"
-        >
-          <span className="bg-gradient-to-r from-gray-800 via-gray-600 to-gray-800 bg-clip-text text-transparent">
-            Interactive Experience by
-          </span>
-        </motion.div>
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="relative p-3"
-        >
-          <div className="absolute inset-0 rounded-2xl bg-gradient-radial from-rose-100 via-purple-50 to-blue-100 opacity-70" />
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-rose-200/20 via-purple-200/20 to-blue-200/20" />
-          <div className="relative">
-            <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent animate-gradient-x font-bold text-2xl">
-              이승훈
-            </span>
-          </div>
-        </motion.div>
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="text-base mt-2 mb-6 font-medium"
-        >
-          <span className="text-gray-800">
-            자율전공 / 시각디자인 / 23학번
-          </span>
-        </motion.div>
-        <div className="w-full h-[3px] bg-gradient-to-r from-transparent via-purple-300 to-transparent mb-6"/>
-      </div>, 
-      false, 
-      MESSAGE_DELAY
-    );
 
     await new Promise(resolve => setTimeout(resolve, 7000));
     resetChatState();
@@ -339,8 +298,7 @@ const ChatInterface = ({
         setIsExhibitionEnding(true);
         setIsFinalMessage(true);
         await addAIMessage("좋아요~ 아쉽게도 이제 대화를 마무리할 시간이네요.", true, MESSAGE_DELAY);
-        await addAIMessage("다른 작품들도 재미있으니 즐겁게 관람하시길 바랍니다!", true, MESSAGE_DELAY);
-        await addAIMessage("관람 후기에 대한 한 줄 소감 부탁드려요~!", true, MESSAGE_DELAY);
+        await addAIMessage("짧지만, 이야기를 해보니 어떤 느낌이 드셨나요?", true, MESSAGE_DELAY);
       } else {
         const aiResponse = await chatService.sendMessage(
           userMessage,

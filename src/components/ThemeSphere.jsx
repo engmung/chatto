@@ -18,7 +18,7 @@ const useSphereAnimation = (group, scaleRef, position, targetScale, state, isAct
     let targetY = position[1];
     
     if (state === 'active' && isActive) {
-      targetY += isChatOpen ? 1.5 : 0.3;
+      targetY += isChatOpen ? 1.4 : 0.4;
     } 
     else if (state !== 'active') {
       const time = _.clock.getElapsedTime();
@@ -118,9 +118,9 @@ const ThemeSphereInner = ({ color }) => {
       <meshPhysicalMaterial
         color={color}
         emissive={color}
-        emissiveIntensity={0.3}
+        emissiveIntensity={0.7}
         roughness={0.7}
-        metalness={0.1}
+        metalness={0.4}
       />
     </mesh>
   );

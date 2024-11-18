@@ -93,7 +93,7 @@ const AnimatedShadow = React.memo(({ position, isActive, state }) => {
   );
 });
 
-const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialThemeData }) => {
+const Scene3D = ({ currentState, currentTheme, isChatOpen, themes, onSceneClick }) => {
   const spacing = 1.5;
   const decorationCount = 3;
   const centerOffset = ((themes.length - 1) * spacing) / 2;
@@ -118,113 +118,122 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialTheme
   const decorationPositions = createDecorationPositions();
 
   return (
-    <Canvas 
-      dpr={[1, 1.5]}
-      performance={{ 
-        min: 0.5,
-        max: 1,
-        debounce: 200,
-        regress: true
-      }}
-      gl={{
-        powerPreference: "high-performance",
-        antialias: false,
-        stencil: false,
-        depth: true,
-        alpha: false,
-      }}
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        contain: 'paint size layout',
-        touchAction: 'none',
-      }}
+    <div 
+      className="w-full h-full absolute top-0 left-0"
+      onClick={() => onSceneClick()}
     >
-      <color attach="background" args={['#FFFFFF']} />
+      <Canvas 
+        dpr={[1, 1.5]}
+        performance={{ 
+          min: 0.5,
+          max: 1,
+          debounce: 200,
+          regress: true
+        }}
+        gl={{
+          powerPreference: "high-performance",
+          antialias: false,
+          stencil: false,
+          depth: true,
+          alpha: false,
+        }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          contain: 'paint size layout',
+          touchAction: 'none',
+        }}
+      >
+        <color attach="background" args={['#cccccc']} />
 
-      <OrthographicCamera 
-        makeDefault 
-        position={[0, 0, 5]} 
-        zoom={150}
-        rotation={[0, 0, 0]}
-      />
-      
-      <CameraController
-        currentState={currentState}
-        currentTheme={currentTheme}
-        spacing={spacing}
-        centerOffset={centerOffset}
-      />
-      
-      <ambientLight intensity={1.5} />
-      <directionalLight position={[0, 4, 10]} intensity={3} />
-      <directionalLight position={[-3, 3, 5]} intensity={0.4} />
-
-      {/* 배경 평면 */}
-      <mesh position={[0, -0.7, -2]}>
-        <planeGeometry args={[50, 50]} />
-        <meshStandardMaterial 
-          color="#FFFFFF"
-          roughness={1}
-          metalness={0}
+        <OrthographicCamera 
+          makeDefault 
+          position={[0, 0, 5]} 
+          zoom={150}
+          rotation={[0, 0, 0]}
         />
-      </mesh>
-      
-      {/* 장식용 그림자 */}
-      {React.useMemo(() => 
-        decorationPositions.map((position, i) => (
-          <AnimatedShadow
-            key={`decoration-shadow-${i}`}
-            position={position}
-            isActive={false}
-            state={currentState}
+        
+        <CameraController
+          currentState={currentState}
+          currentTheme={currentTheme}
+          spacing={spacing}
+          centerOffset={centerOffset}
+        />
+        
+        <ambientLight intensity={1.5} />
+        <directionalLight position={[0, 4, 10]} intensity={3} />
+        <directionalLight position={[-3, 3, 5]} intensity={0.4} />
+
+        {/* 배경 평면 */}
+        <mesh position={[0, -0.7, -2]}>
+          <planeGeometry args={[50, 50]} />
+          <meshStandardMaterial 
+            color="#CCCCCC"
+            roughness={1}
+            metalness={0}
           />
-        ))
-      , [currentState, decorationPositions])}
-      
-      {/* 테마 그림자 */}
-      {React.useMemo(() => 
-        themes.map((theme, i) => (
-          <AnimatedShadow
-            key={`theme-shadow-${i}`}
-            position={getThemePosition(i)}
-            isActive={Math.round(currentTheme) === i}
-            state={currentState}
-          />
-        ))
-      , [currentTheme, currentState, themes])}
-      
-      {/* 장식용 구들 */}
-      {React.useMemo(() => 
-        decorationPositions.map((position, i) => (
-          <ThemeSphere
-            key={`decoration-${i}`}
-            position={position}
-            isActive={false}
-            state={currentState}
-            isDecoration={true}
-            color={'#cccccc'}
-          />
-        ))
-      , [currentState, decorationPositions])}
-      
-      {/* 테마 구들 */}
-      {React.useMemo(() => 
-        themes.map((theme, i) => (
-          <ThemeSphere
-            key={theme.id}
-            position={getThemePosition(i)}
-            color={theme.color}
-            isActive={Math.round(currentTheme) === i}
-            state={currentState}
-            isChatOpen={isChatOpen}
-          />
-        ))
-      , [currentTheme, currentState, isChatOpen, themes])}
-    </Canvas>
+        </mesh>
+        
+        {/* 장식용 그림자 */}
+        {React.useMemo(() => 
+          decorationPositions.map((position, i) => (
+            <AnimatedShadow
+              key={`decoration-shadow-${i}`}
+              position={position}
+              isActive={false}
+              state={currentState}
+            />
+          ))
+        , [currentState, decorationPositions])}
+        
+        {/* 테마 그림자 */}
+        {React.useMemo(() => 
+          themes.map((theme, i) => (
+            <AnimatedShadow
+              key={`theme-shadow-${i}`}
+              position={getThemePosition(i)}
+              isActive={Math.round(currentTheme) === i}
+              state={currentState}
+            />
+          ))
+        , [currentTheme, currentState, themes])}
+        
+        {/* 장식용 구들 */}
+        {React.useMemo(() => 
+          decorationPositions.map((position, i) => (
+            <ThemeSphere
+              key={`decoration-${i}`}
+              position={position}
+              isActive={false}
+              state={currentState}
+              isDecoration={true}
+              color={'#cccccc'}
+            />
+          ))
+        , [currentState, decorationPositions])}
+        
+        {/* 테마 구들 */}
+        {React.useMemo(() => 
+          themes.map((theme, i) => (
+            <ThemeSphere
+              key={theme.id}
+              position={getThemePosition(i)}
+              color={theme.color}
+              isActive={Math.round(currentTheme) === i}
+              state={currentState}
+              isChatOpen={isChatOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSceneClick(i);
+              }}
+            />
+          ))
+        , [currentTheme, currentState, isChatOpen, themes, onSceneClick])}
+      </Canvas>
+    </div>
   );
 };
 

@@ -27,7 +27,7 @@ const SECOND_GREETINGS = [
 
 const StartGuide = ({ 
   isVisible, 
-  duration = 8000,
+  duration = 50000,
   onKeyInteraction = false,
   currentState
 }) => {
@@ -166,17 +166,14 @@ const StartGuide = ({
             </motion.div>
 
             <motion.div
-              className="fixed bottom-8 right-10 text-gray-600 flex items-center gap-3"
+              className="fixed bottom-4 right-5 text-gray-600 flex items-center"
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.9 }}
               exit={{ opacity: 0 }}
               transition={{ duration: exitDuration + 0.7 }}
             >
-              <Star size={24} className="text-yellow-500" />
-              <span className="text-2xl">Powered by</span>
-              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
-                이승훈
-              </span>
+              <span className="text-lg">F11 키를 눌러 전체화면으로 즐기세요.</span>
+              
             </motion.div>
           </div>
         </motion.div>

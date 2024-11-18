@@ -1,17 +1,17 @@
 ﻿
-Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components
 
 
-Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\services
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\services
 
 
-Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\types
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\types
 
 
-Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\utils
+Directory: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\utils
 
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\App.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\App.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,8 +22,14 @@ import StartGuide from './components/StartGuide';
 import BackgroundMusic from './components/BackgroundMusic';
 import { initialThemeData, generateThemeData } from './themes';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
-import visionService from './services/visionService';
 import { sounds } from './utils/soundEffects';
+
+const CONFIG = {
+  GUIDE_SHOW_INTERVAL: 20000,    
+  GUIDE_DURATION: 10000,         
+  THEME_INACTIVE_TIMEOUT: 20000, 
+  CHAT_INACTIVE_TIMEOUT: 40000   
+};
 
 const App = () => {
   const [currentState, setCurrentState] = useState('idle');
@@ -36,11 +42,11 @@ const App = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isChatClosing, setIsChatClosing] = useState(false);
   const [themes, setThemes] = useState(initialThemeData);
-  const [isViewerPresent, setIsViewerPresent] = useState(false);
   const [hasKeyInteraction, setHasKeyInteraction] = useState(false);
   const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
   const [isActive, setIsActive] = useState(false);
   const [hasUserInteraction, setHasUserInteraction] = useState(false);
+  const [lastActivityTime, setLastActivityTime] = useState(Date.now());
 
   const autoChangeInterval = useRef(null);
   const bounceAnimationRef = useRef(null);
@@ -70,39 +76,39 @@ const App = () => {
       clearTimeout(guideTimerRef.current);
     }
     
-    if (currentState === 'idle' && isViewerPresent && !hasKeyInteraction) {
+    if (currentState === 'idle' && !hasKeyInteraction) {
       guideTimerRef.current = setTimeout(() => {
         setHasKeyInteraction(true);
-      }, 4000);
+        setTimeout(() => {
+          setHasKeyInteraction(false);
+        }, CONFIG.GUIDE_DURATION);
+      }, CONFIG.GUIDE_SHOW_INTERVAL);
     }
   };
 
   const checkAndResetInactivity = () => {
-  if (!isViewerPresent && lastInactiveTime.current) {
+  if (!hasKeyInteraction && lastInactiveTime.current) {
     const currentTime = Date.now();
     const inactiveTime = currentTime - lastInactiveTime.current;
-    const timeout = isChatOpen ? 10000 : 7000;
+    const timeout = isChatOpen ? CONFIG.CHAT_INACTIVE_TIMEOUT : CONFIG.THEME_INACTIVE_TIMEOUT;
 
     if (inactiveTime >= timeout) {
       handleReset();
+      lastInactiveTime.current = null;
     }
   }
 };
 
   const startInactivityTimer = () => {
-  if (inactivityTimerRef.current) {
-    clearTimeout(inactivityTimerRef.current);
-  }
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
 
-  if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
-    lastInactiveTime.current = Date.now();
-
-    const timeout = isChatOpen ? 10000 : 7000;
+    const timeout = isChatOpen ? CONFIG.CHAT_INACTIVE_TIMEOUT : CONFIG.THEME_INACTIVE_TIMEOUT;
     inactivityTimerRef.current = setTimeout(() => {
-      handleReset();  // checkAndResetInactivity 대신 직접 handleReset 호출
+      handleReset();
     }, timeout);
-  }
-};
+  };
 
   const startAutoChange = () => {
     if (autoChangeInterval.current) {
@@ -157,10 +163,8 @@ const App = () => {
 };
 
   const handleInteraction = () => {
-    setLastInteractionTime(Date.now());
-    if (lastInactiveTime.current) {
-      lastInactiveTime.current = Date.now();
-    }
+    setLastActivityTime(Date.now());
+    
     if (currentState === 'idle') {
       setHasKeyInteraction(true);
       if (guideTimerRef.current) {
@@ -171,6 +175,7 @@ const App = () => {
 
   // 테마 변경 시
 const handleThemeChange = (changeDirection) => {
+  handleInteraction();
   if ((currentState === 'active' || currentState === 'idle') && 
       !bounceAnimationRef.current && !isTransitioning) {
     const nextTheme = currentTheme + changeDirection;
@@ -180,13 +185,13 @@ const handleThemeChange = (changeDirection) => {
     }
     
     sounds.move();
-    handleInteraction();
 
     
     
     // 비전 처리 일시 중지 (매우 짧은 시간만)
-    visionService.suspend();
-    setTimeout(() => visionService.resume(), 100);
+    setTimeout(() => {
+      // visionService.suspend();
+    }, 100);
     
     if (currentState === 'active') {
       setIsTransitioning(true);
@@ -213,8 +218,9 @@ const handleThemeChange = (changeDirection) => {
 
 
   const handleStateChange = () => {
-    setHasKeyInteraction(true);
+    handleInteraction();
     sounds.select();
+    lastInactiveTime.current = Date.now();
     
     if (currentState === 'active') {
       setIsChatOpen(true);
@@ -240,6 +246,7 @@ const handleThemeChange = (changeDirection) => {
   };
 
   const handleChatClose = () => {
+    handleInteraction();
     sounds.close();
     setIsChatClosing(true);
     setIsChatOpen(false);
@@ -248,80 +255,21 @@ const handleThemeChange = (changeDirection) => {
     }, 500);
   };
 
-  // Vision Service 효과
-  // useEffect 내부
-useEffect(() => {
-  let mounted = true;
-  let presenceTimeout = null;
-
-  const handlePresenceChange = (present) => {
-    if (!mounted) return;
-    
-    // 이전 타임아웃 클리어
-    if (presenceTimeout) {
-      clearTimeout(presenceTimeout);
-      presenceTimeout = null;
-    }
-
-    setIsViewerPresent(present);
-    
-    if (present) {
-      if (currentState === 'idle') {
-        setHasKeyInteraction(false);
-        startGuideTimer();
-      } else {
-        lastInactiveTime.current = null;
-        if (inactivityTimerRef.current) {
-          clearTimeout(inactivityTimerRef.current);
-          inactivityTimerRef.current = null;
-        }
-      }
-    } else if (isActive || isChatOpen) {
-      // 부재 시 타임아웃 설정
-      presenceTimeout = setTimeout(() => {
-        startInactivityTimer();
-      }, 1000); // 1초 지연
-    }
-  };
-
-  visionService.onPresenceChange = handlePresenceChange;
-
-  // Connect vision service with error handling
-  const connectVision = async () => {
-    try {
-      await visionService.connect();
-    } catch (error) {
-      console.warn('Vision initialization error:', error);
-    }
-  };
-  
-  connectVision();
-
-  // Cleanup
-  return () => {
-    mounted = false;
-    if (presenceTimeout) {
-      clearTimeout(presenceTimeout);
-    }
-    visionService.disconnect();
-  };
-}, []); // Empty dependency array
-
   useEffect(() => {
     const checkInterval = setInterval(() => {
-      if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+      if (!hasKeyInteraction && (currentState === 'active' || isChatOpen)) {
         checkAndResetInactivity();
       }
     }, 1000);
 
     return () => clearInterval(checkInterval);
-  }, [isViewerPresent, currentState, isChatOpen]);
+  }, [hasKeyInteraction, currentState, isChatOpen]);
 
   useEffect(() => {
-  if (!isViewerPresent && (currentState === 'active' || isChatOpen)) {
+  if (!hasKeyInteraction && (currentState === 'active' || isChatOpen)) {
     startInactivityTimer();
   }
-}, [isViewerPresent, currentState, isChatOpen]);
+}, [hasKeyInteraction, currentState, isChatOpen]);
 
   useEffect(() => {
     if (currentState === 'idle') {
@@ -365,6 +313,34 @@ useEffect(() => {
   window.addEventListener('keydown', handleKeyPress);
   return () => window.removeEventListener('keydown', handleKeyPress);
 }, [currentState, currentTheme, isTransitioning, isChatOpen]);
+
+  useEffect(() => {
+    if (currentState === 'idle') {
+      startGuideTimer();
+    }
+    return () => {
+      if (guideTimerRef.current) {
+        clearTimeout(guideTimerRef.current);
+      }
+    };
+  }, [currentState, hasKeyInteraction]);
+
+  useEffect(() => {
+    // idle 상태일 때는 타이머를 실행하지 않음
+    if (currentState === 'idle') return;
+
+    const inactivityCheck = setInterval(() => {
+      const currentTime = Date.now();
+      const inactiveTime = currentTime - lastActivityTime;
+      const timeout = isChatOpen ? CONFIG.CHAT_INACTIVE_TIMEOUT : CONFIG.THEME_INACTIVE_TIMEOUT;
+
+      if (inactiveTime >= timeout) {
+        handleReset();
+      }
+    }, 1000);
+
+    return () => clearInterval(inactivityCheck);
+  }, [currentState, isChatOpen, lastActivityTime]);
 
   const renderDirectionArrows = () => {
   if (currentState !== 'active') return null;
@@ -433,7 +409,7 @@ useEffect(() => {
         themes={themes}
       />
       <StartGuide 
-        isVisible={currentState === 'idle' && isViewerPresent && !hasKeyInteraction}
+        isVisible={currentState === 'idle' && !hasKeyInteraction}
         currentState={currentState}
         onKeyInteraction={hasKeyInteraction}
       />
@@ -462,19 +438,30 @@ useEffect(() => {
 
 export default App;
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\index.css
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\index.css
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  padding: 0;
+html {
   overflow: hidden;
+  height: 100%;
 }
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\main.jsx
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: none;
+}
+
+#root {
+  isolation: isolate;
+}
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\main.jsx
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -502,95 +489,77 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 );
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\themes.js
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\themes.js
 
 // themes.js
-const funMemories = [
+const positiveMemories = [
   {
-    question: "최근에 큰 소리로 웃은 순간이 있나요?",
-    color: '#FF7B7B'
+    question: "최근에 가장 행복했던 순간은 언제인가요?",
+    color: '#FF8C69'
   },
   {
-    question: "친구와 함께한 즐거운 추억을 들려주세요",
-    color: '#FF9B6A'
+    question: "지금 가장 감사한 것이 있다면 무엇인가요?",
+    color: '#FFA07A'
   },
   {
-    question: "예상치 못한 즐거운 일이 있었나요?",
-    color: '#FFB55F'
+    question: "최근에 누군가에게서 받은 친절한 행동이 있나요?",
+    color: '#FFB07C'
   },
   {
-    question: "최근 가장 맛있게 먹은 음식은 무엇인가요?",
-    color: '#FFCC59'
+    question: "스스로 칭찬하고 싶은 점이 있다면 무엇인가요?",
+    color: '#FFD0A6'
   },
   {
-    question: "우연히 발견한 재미있는 것이 있나요?",
-    color: '#FFB86F'
-  },
-  {
-    question: "최근 본 영화나 드라마 중 재미있었던 장면은?",
-    color: '#FFA76F'
-  },
-  {
-    question: "갑자기 웃음이 났던 순간이 있나요?",
-    color: '#FF8E8E'
-  },
-  {
-    question: "친구와 나눈 재미있는 대화가 있나요?",
-    color: '#FFAA7B'
-  },
-  {
-    question: "최근에 받은 예상치 못한 선물이 있나요?",
-    color: '#FF9D6E'
-  },
-  {
-    question: "길거리에서 마주친 재미있는 장면이 있나요?",
-    color: '#FFB57B'
+    question: "가장 기대되는 일이 있다면 무엇인가요?",
+    color: '#FFC590'
   }
 ];
 
-const frustratingMemories = [
+const challengingMemories = [
   {
-    question: "최근에 가장 답답했던 순간은 언제인가요?",
-    color: '#7B7BFF'
+    question: "최근에 가장 어려웠던 결정은 무엇인가요?",
+    color: '#7F7FFF'
   },
   {
-    question: "누군가에게 하지 못한 말이 있나요?",
-    color: '#6A9BFF'
+    question: "지금 가장 해결하고 싶은 문제는 무엇인가요?",
+    color: '#6B8EFF'
   },
   {
-    question: "시간이 부족하다고 느낀 순간이 있나요?",
-    color: '#5FB5FF'
+    question: "좌절감을 느꼈던 최근의 순간은 언제인가요?",
+    color: '#5FA0FF'
   },
   {
-    question: "최근에 실수한 것 중 아쉬운 게 있나요?",
-    color: '#59CCFF'
+    question: "스스로를 더 강하게 만들어준 경험이 있다면?",
+    color: '#59B8FF'
   },
   {
-    question: "다시 한번 기회가 있다면 하고 싶은 말은?",
-    color: '#6FB8FF'
-  },
-  {
-    question: "오늘 하루 중 가장 힘들었던 순간은?",
-    color: '#6FA7FF'
-  },
-  {
-    question: "최근에 포기한 것이 있다면?",
-    color: '#8E8EFF'
-  },
-  {
-    question: "지금 해결하고 싶은 고민이 있나요?",
-    color: '#7BAAFF'
-  },
-  {
-    question: "누군가에게 사과하고 싶은 마음이 있나요?",
-    color: '#6E9DFF'
-  },
-  {
-    question: "스스로에게 화가 났던 순간이 있나요?",
-    color: '#7BB5FF'
+    question: "다시 도전하고 싶은 일이 있다면 무엇인가요?",
+    color: '#6FAFFF'
   }
 ];
 
+const reflectiveMemories = [
+  {
+    question: "요즘 자주 생각하게 되는 것은 무엇인가요?",
+    color: '#90EE90'
+  },
+  {
+    question: "최근에 배운 가장 중요한 교훈은 무엇인가요?",
+    color: '#A1F2A1'
+  },
+  {
+    question: "자신의 성장에 대해 어떤 생각을 하시나요?",
+    color: '#B3F7B3'
+  },
+  {
+    question: "미래에 대한 가장 큰 희망은 무엇인가요?",
+    color: '#C4FAC4'
+  },
+  {
+    question: "스스로에게 해주고 싶은 말이 있다면 무엇인가요?",
+    color: '#D8FFD8'
+  }
+];
 
 function getRandomItem(array) {
   return array[Math.floor(Math.random() * array.length)];
@@ -600,24 +569,29 @@ function generateThemeData() {
   return [
     {
       id: 0,
-      color: '#ff4b6b',
-      question: "오늘 가장 기억에 남는 순간은 언제인가요?",
+      color: '#FF6B6B',
+      question: "오늘 하루 중 가장 기분 좋았던 순간은?",
       floatingParams: { speed: 1, amplitude: 0.1, phase: 0 }
     },
     {
       id: 1,
-      ...getRandomItem(funMemories),
+      ...getRandomItem(positiveMemories),
       floatingParams: { speed: 0.8, amplitude: 0.15, phase: Math.PI / 3 }
     },
     {
       id: 2,
-      ...getRandomItem(frustratingMemories),
+      ...getRandomItem(challengingMemories),
       floatingParams: { speed: 1.2, amplitude: 0.12, phase: Math.PI / 1.5 }
     },
     {
       id: 3,
-      color: '#4ade80',
-      question: "전시 중 가장 인상 깊었던 것은?",
+      ...getRandomItem(reflectiveMemories),
+      floatingParams: { speed: 0.9, amplitude: 0.14, phase: Math.PI / 2 }
+    },
+    {
+      id: 4,
+      color: '#4CAF50',
+      question: "오늘 자신을 가장 뿌듯하게 했던 것은?",
       floatingParams: { speed: 1.1, amplitude: 0.13, phase: Math.PI / 2.5 }
     }
   ];
@@ -626,7 +600,8 @@ function generateThemeData() {
 export const initialThemeData = generateThemeData();
 export { generateThemeData };
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\BackgroundMusic.jsx
+
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components\BackgroundMusic.jsx
 
 import React, { useEffect, useRef, useState } from 'react';
 
@@ -721,7 +696,7 @@ const BackgroundMusic = ({
 
 export default BackgroundMusic;
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\CameraController.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components\CameraController.jsx
 
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -753,7 +728,7 @@ const CameraController = ({ currentState, currentTheme, spacing, centerOffset })
 
 export default CameraController;
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\ChatInterface.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components\ChatInterface.jsx
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -911,18 +886,20 @@ const ChatInterface = ({
 
     return type === 'vertical'
       ? `linear-gradient(180deg, 
-          rgba(${r},${g},${b},0.50) 0%,
-          rgba(${r},${g},${b},0.40) 60%,
-          rgba(${r},${g},${b},0.20) 80%,
+          rgba(${r},${g},${b},0.45) 0%,
+          rgba(${r},${g},${b},0.45) 10%,
+          rgba(${r},${g},${b},0.36) 20%,
+          rgba(${r},${g},${b},0.32) 30%,
+          rgba(${r},${g},${b},0.02) 60%,
           rgba(${r},${g},${b},0) 100%)`
       : `linear-gradient(90deg,
-          rgba(${r},${g},${b},0.25) 0%,
-          rgba(${r},${g},${b},0.16) 20%,
-          rgba(${r},${g},${b},0.08) 40%,
-          rgba(${r},${g},${b},0.04) 50%,
-          rgba(${r},${g},${b},0.08) 60%,
-          rgba(${r},${g},${b},0.16) 80%,
-          rgba(${r},${g},${b},0.25) 100%)`;
+          rgba(${r},${g},${b},0.45) 0%,
+          rgba(${r},${g},${b},0.36) 20%,
+          rgba(${r},${g},${b},0.28) 40%,
+          rgba(${r},${g},${b},0.24) 50%,
+          rgba(${r},${g},${b},0.28) 60%,
+          rgba(${r},${g},${b},0.36) 80%,
+          rgba(${r},${g},${b},0.45) 100%)`;
   };
 
   const scrollToBottom = () => {
@@ -956,6 +933,48 @@ const ChatInterface = ({
     await addAIMessage("안녕히 가세요!", true, MESSAGE_DELAY/2);
     
     sounds.special();
+    
+    await addAIMessage(
+      <div className="flex flex-col items-center pt-8 relative">
+        <div className="w-full h-[3px] bg-gradient-to-r from-transparent via-purple-300 to-transparent mb-6"/>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-xl font-semibold mb-2"
+        >
+          <span className="bg-gradient-to-r from-gray-800 via-gray-600 to-gray-800 bg-clip-text text-transparent">
+            Interactive Experience by
+          </span>
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="relative p-3"
+        >
+          <div className="absolute inset-0 rounded-2xl bg-gradient-radial from-rose-100 via-purple-50 to-blue-100 opacity-70" />
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-rose-200/20 via-purple-200/20 to-blue-200/20" />
+          <div className="relative">
+            <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent animate-gradient-x font-bold text-2xl">
+              이승훈
+            </span>
+          </div>
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="text-base mt-2 mb-6 font-medium"
+        >
+          <span className="text-gray-800">
+            자율전공 / 시각디자인 / 23학번
+          </span>
+        </motion.div>
+        <div className="w-full h-[3px] bg-gradient-to-r from-transparent via-purple-300 to-transparent mb-6"/>
+      </div>, 
+      false, 
+      MESSAGE_DELAY
+    );
 
     await new Promise(resolve => setTimeout(resolve, 7000));
     resetChatState();
@@ -978,7 +997,7 @@ const ChatInterface = ({
       resetChatState();
       const initChat = async () => {
         try {
-          setMessages([{ text: "안녕하세요! (대화를 중단하시려면 esc 버튼을 누르시면 됩니다~)", isAI: true }]);
+          setMessages([{ text: "안녕하세요!", isAI: true }]);
           const firstQuestion = await chatService.getInitialQuestion(currentQuestion);
           await addAIMessage(firstQuestion, true, MESSAGE_DELAY);
           setConversationHistory([{ role: "assistant", content: firstQuestion }]);
@@ -1096,13 +1115,13 @@ const ChatInterface = ({
                 duration: 0.5,
                 ease: "easeInOut"
               }}
-              className="bg-[#F5F5F5]/70 backdrop-blur-[4px] rounded-[30px] w-[1300px] h-[875px] mx-4 flex flex-col shadow-[0px_0px_20px_5px_rgba(0,0,0,0.07)] relative"
+              className="bg-[#F5F5F5]/70 backdrop-blur-[4px] rounded-[30px] w-[1300px] h-[90vh] mx-4 flex flex-col shadow-[0px_0px_20px_5px_rgba(0,0,0,0.07)] relative"
             >
               <div 
                 className="absolute inset-0 rounded-[30px] pointer-events-none"
                 style={{
                   background: createGradient(themeColor),
-                  height: '400px'
+                  height: '45%'
                 }}
               />
 
@@ -1110,8 +1129,8 @@ const ChatInterface = ({
                 ref={messagesContainerRef}
                 className="flex-1 overflow-y-auto scrollbar-hide flex flex-col"
                 style={{ 
-                  marginTop: '100px',
-                  marginBottom: '80px',
+                  marginTop: '11vh',
+                  marginBottom: '9vh',
                   maskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
                   WebkitMaskImage: 'linear-gradient(to top, black 85%, transparent 100%)'
                 }}
@@ -1131,7 +1150,7 @@ const ChatInterface = ({
                 <div className="flex-grow" />
               </div>
 
-              <div className="px-8 pb-8 flex justify-center">
+              <div className="px-8 pb-[2vh] flex justify-center">
                 <div className="w-[1200px] bg-white/70 backdrop-blur-[4px] rounded-xl overflow-hidden shadow-[0px_2px_10px_rgba(0,0,0,0.06)]">
                   <form onSubmit={handleSubmit} className="h-[50px] p-0">
                     <input
@@ -1150,11 +1169,19 @@ const ChatInterface = ({
                       className="absolute inset-0"
                       style={{ background: createGradient(themeColor, 'horizontal') }}
                     />
-                    <img 
-                      src="/images/brandBar.png"
-                      alt="Brand"
-                      className="w-full h-full object-contain relative z-10 scale-95"
-                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-[1170px] relative flex items-center justify-center">
+                        <div className="w-[1000px] h-[3px] bg-white" />
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 flex gap-2">
+                          <Plus size={27} className="text-white" strokeWidth={3} />
+                          <Minus size={27} className="text-white" strokeWidth={3} />
+                        </div>
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 flex gap-2">
+                          <X size={27} className="text-white" strokeWidth={3} />
+                          <Percent size={27} className="text-white" strokeWidth={3} />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1168,7 +1195,7 @@ const ChatInterface = ({
 
 export default ChatInterface;
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\ChatMessage.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components\ChatMessage.jsx
 
 import React from 'react';
 import { motion } from 'framer-motion';
@@ -1253,7 +1280,7 @@ const ChatMessage = React.memo(({ message, isAI, isLoading, distance, themeColor
 
 export default React.memo(ChatMessage);
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\Scene3D.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components\Scene3D.jsx
 
 import React, { useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -1261,7 +1288,7 @@ import { OrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import ThemeSphere from './ThemeSphere';
 import CameraController from './CameraController';
-import { initialThemeData } from '../themes';  // import 수정
+import { initialThemeData } from '../themes';
 
 // 그림자 텍스처 생성
 const createShadowTexture = () => {
@@ -1350,10 +1377,10 @@ const AnimatedShadow = React.memo(({ position, isActive, state }) => {
   );
 });
 
-const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialThemeData }) => {  // themes prop 추가 및 기본값 설정
+const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialThemeData }) => {
   const spacing = 1.5;
   const decorationCount = 3;
-  const centerOffset = ((themes.length - 1) * spacing) / 2;  // themeData를 themes로 변경
+  const centerOffset = ((themes.length - 1) * spacing) / 2;
   
   const getThemePosition = (index) => [
     index * spacing - centerOffset,
@@ -1376,8 +1403,29 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialTheme
 
   return (
     <Canvas 
-      dpr={[1, 2]}
-      performance={{ min: 0.5 }}
+      dpr={[1, 1.5]}
+      performance={{ 
+        min: 0.5,
+        max: 1,
+        debounce: 200,
+        regress: true
+      }}
+      gl={{
+        powerPreference: "high-performance",
+        antialias: false,
+        stencil: false,
+        depth: true,
+        alpha: false,
+      }}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        contain: 'paint size layout',
+        touchAction: 'none',
+      }}
     >
       <color attach="background" args={['#FFFFFF']} />
 
@@ -1419,7 +1467,7 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialTheme
             state={currentState}
           />
         ))
-      , [currentState])}
+      , [currentState, decorationPositions])}
       
       {/* 테마 그림자 */}
       {React.useMemo(() => 
@@ -1445,8 +1493,9 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialTheme
             color={'#cccccc'}
           />
         ))
-      , [currentState])}
+      , [currentState, decorationPositions])}
       
+      {/* 테마 구들 */}
       {React.useMemo(() => 
         themes.map((theme, i) => (
           <ThemeSphere
@@ -1465,7 +1514,7 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes = initialTheme
 
 export default React.memo(Scene3D);
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\StartGuide.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components\StartGuide.jsx
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1569,7 +1618,7 @@ const StartGuide = ({
         >
           <div className="fixed inset-0 flex flex-col justify-between py-32">
             <motion.div
-              className="flex justify-center items-center"
+              className="flex justify-center items-center w-full"
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -1593,32 +1642,45 @@ const StartGuide = ({
             </motion.div>
 
             <motion.div
-              className="flex justify-center gap-32"
+              className="flex justify-center items-center w-full"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: exitDuration + 0.3, delay: 0.2 }}
             >
-              <motion.div
-                className="flex flex-col items-center gap-4"
-                animate={{ opacity: [0.8, 1, 0.8] }}
-                transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
-              >
-                <span className="text-4xl font-black text-gray-800">시작</span>
-                <span className="text-2xl font-bold text-gray-600">스페이스 or 엔터</span>
-              </motion.div>
+              <div className="flex justify-between w-[800px]">
+                <motion.div
+                  className="flex flex-col items-center gap-4 w-[200px]"
+                  animate={{ opacity: [0.8, 1, 0.8] }}
+                  transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
+                >
+                  <span className="text-4xl font-black text-gray-800">시작</span>
+                  <span className="text-2xl font-bold text-gray-600">Enter</span>
+                </motion.div>
 
-              <motion.div 
-                className="flex flex-col items-center gap-4"
-                animate={{ opacity: [0.8, 1, 0.8] }}
-                transition={{ duration: 2, repeat: Infinity, delay: 0.9 }}
-              >
-                <span className="text-4xl font-black text-gray-800">이동</span>
-                <div className="flex items-center gap-3">
-                  <ArrowLeftRight size={32} className="text-gray-600" />
-                  <span className="text-2xl font-bold text-gray-600">방향키</span>
-                </div>
-              </motion.div>
+                <motion.div 
+                  className="flex flex-col items-center gap-4 w-[200px]"
+                  animate={{ opacity: [0.8, 1, 0.8] }}
+                  transition={{ duration: 2, repeat: Infinity, delay: 0.7 }}
+                >
+                  <span className="text-4xl font-black text-gray-800">이동</span>
+                  <div className="flex items-center gap-3">
+                    <ArrowLeftRight size={32} className="text-gray-600" />
+                    <span className="text-2xl font-bold text-gray-600">방향키</span>
+                  </div>
+                </motion.div>
+
+                <motion.div 
+                  className="flex flex-col items-center gap-4 w-[200px]"
+                  animate={{ opacity: [0.8, 1, 0.8] }}
+                  transition={{ duration: 2, repeat: Infinity, delay: 0.9 }}
+                >
+                  <span className="text-4xl font-black text-gray-800">취소</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl font-bold text-gray-600">ESC</span>
+                  </div>
+                </motion.div>
+              </div>
             </motion.div>
 
             <motion.div
@@ -1643,7 +1705,7 @@ const StartGuide = ({
 
 export default StartGuide;
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\ThemeSphere.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components\ThemeSphere.jsx
 
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -1788,41 +1850,10 @@ const ThemeSphere = ({ position, color, isActive, state, isDecoration = false, i
 export default ThemeSphere;
 export { ThemeSphereOuter, ThemeSphereInner };
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\components\ThemeText.jsx
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\components\ThemeText.jsx
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-const BrandBar = ({ color, textState, isChatOpen }) => (
-  <AnimatePresence mode="sync">
-    {textState !== 'none' && !isChatOpen && (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.5 }}
-        className="fixed w-[1100px] left-1/2 -translate-x-1/2 top-14"
-      >
-        <svg 
-          width="1159" 
-          height="22" 
-          viewBox="0 0 1159 22" 
-          fill="none" 
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-full drop-shadow-sm"
-        >
-          <path d="M1126.57 1.79326H1121.12C1121.12 3.95973 1119.36 5.71209 1117.2 5.71209C1115.03 5.71209 1113.28 3.95468 1113.28 1.79326H1107.83C1107.83 6.96955 1112.03 11.1611 1117.2 11.1611C1122.37 11.1611 1126.57 6.96955 1126.57 1.79326Z" fill={color}/>
-          <path d="M1117.2 11.161C1112.03 11.161 1107.83 15.3525 1107.83 20.5288H1113.28C1113.28 18.3624 1115.03 16.61 1117.2 16.61C1119.36 16.61 1121.11 18.3674 1121.11 20.5288H1126.56C1126.57 15.3525 1122.37 11.161 1117.2 11.161Z" fill={color}/>
-          <path d="M1152.15 6.8332C1148.37 6.8332 1145.3 9.89901 1145.3 13.681C1145.3 17.463 1148.37 20.5289 1152.15 20.5289C1155.93 20.5289 1159 17.463 1159 13.681C1159 9.89901 1155.93 6.8332 1152.15 6.8332ZM1155.83 14.8759C1156.58 15.8589 1155.59 17.2255 1154.42 16.809C1154.46 18.0514 1152.85 18.5739 1152.15 17.5471C1151.45 18.5702 1149.85 18.0514 1149.88 16.809C1148.71 17.2255 1147.72 15.8589 1148.48 14.8759C1147.28 14.5251 1147.28 12.8369 1148.48 12.4861C1147.72 11.5032 1148.71 10.1365 1149.88 10.5531C1149.85 9.3107 1151.45 8.78816 1152.15 9.81497C1152.85 8.79181 1154.46 9.3107 1154.42 10.5531C1155.59 10.1365 1156.59 11.5032 1155.83 12.4861C1157.02 12.8369 1157.02 14.5251 1155.83 14.8759Z" fill={color}/>
-          <path d="M1152.12 2.05715C1152.47 1.56037 1153.24 1.81336 1153.23 2.41478C1153.8 2.21354 1154.28 2.87476 1153.91 3.35084C1154.49 3.52103 1154.49 4.33864 1153.91 4.50883C1154.28 4.98606 1153.8 5.64728 1153.23 5.44489C1153.24 6.04631 1152.46 6.2993 1152.12 5.80252C1151.78 6.2993 1151 6.04631 1151.02 5.44489C1150.45 5.64613 1149.97 4.98491 1150.34 4.50883C1149.76 4.33864 1149.76 3.52103 1150.34 3.35084C1149.97 2.87361 1150.45 2.21239 1151.02 2.41478C1151 1.81336 1151.78 1.56037 1152.12 2.05715Z" fill={color}/>
-          <path d="M1087.24 13.1999C1086.01 13.3468 1084.79 13.4446 1083.57 13.102C1085.13 13.0042 1086.65 12.3679 1087.77 11.2423C1088.12 10.8507 1088.41 10.4592 1088.61 9.96976C1088.8 9.38245 1088.95 8.7462 1088.95 8.10996C1088.9 7.32688 1088.56 6.25016 1087.63 6.39698C1087.19 6.44593 1086.85 6.73958 1086.6 7.13111C1086.31 7.62054 1086.01 7.96313 1085.67 8.35467C1085.13 8.89303 1084.55 9.43139 1083.81 9.72505C1084.99 8.55044 1085.62 6.78852 1085.57 5.12449C1085.52 4.24353 1085.13 3.46046 1084.59 2.72633C1084.06 2.09008 1083.22 1.45383 1082.39 1.74748C1081.61 1.9922 1081.81 3.06892 1081.95 3.75411C1082.05 4.58613 1082.1 5.3692 1081.95 6.25016C1081.9 6.49487 1081.9 6.73958 1081.76 6.93535C1081.61 4.87978 1080.58 2.77527 1078.63 1.9922C1077.74 1.60066 1076.72 1.45383 1075.79 1.84537C1075.45 1.9922 1075.05 2.18796 1075 2.62844C1074.91 3.36257 1075.59 3.85199 1076.18 4.19459C1076.33 4.34142 1076.47 4.4393 1076.67 4.58613C1077.4 5.17343 1077.99 5.90756 1078.43 6.73958C1077.35 5.71179 1075.93 5.17343 1074.47 5.0266C1073.24 4.92872 1072.02 5.41814 1071.14 6.34804C1070.65 6.8864 1070.21 7.57159 1070.45 8.35467C1070.94 9.03986 1071.87 8.84409 1072.61 8.69726C1073.64 8.50149 1074.61 8.59938 1075.59 8.84409C1074.66 8.89303 1073.73 9.23562 1072.9 9.6761C1072.17 10.1166 1071.53 10.5571 1071.09 11.2912C1070.45 12.319 1070.16 13.5425 1070.55 14.6682C1070.75 15.1576 1071.09 15.647 1071.63 15.647C1071.97 15.5981 1072.27 15.4023 1072.51 15.1087C1073.29 14.0319 1074.08 13.0042 1075.2 12.3679C1074.37 13.3957 1073.93 14.6193 1073.73 15.9407C1073.64 16.7727 1073.83 17.5558 1074.22 18.2899C1074.42 18.6325 1074.61 18.9262 1074.86 19.2198C1075.05 19.4156 1075.25 19.5624 1075.49 19.7582C1075.93 20.0518 1076.42 20.2476 1076.91 20.1008C1077.6 19.8071 1077.55 18.9751 1077.45 18.3389C1077.21 17.1642 1077.26 16.0386 1077.5 14.9129C1077.65 16.3812 1078.19 17.7515 1079.16 18.8283C1080.34 20.0518 1082.34 20.6881 1083.91 19.7092C1084.3 19.4645 1084.35 19.024 1084.2 18.6325C1084.15 18.5836 1084.11 18.4857 1084.06 18.3878C1083.86 18.1431 1083.66 17.9473 1083.37 17.8005L1083.32 17.7026C1082.39 17.1153 1081.61 16.3322 1081.07 15.4023C1082.1 16.2343 1083.32 16.7238 1084.64 16.8706C1086.31 17.0174 1088.02 16.1854 1088.75 14.6682C1088.95 14.2767 1088.95 13.7872 1088.66 13.4446C1088.26 13.102 1087.73 13.102 1087.24 13.1999Z" fill={color}/>
-          <path d="M1049.66 8.5522C1050.88 9.88381 1050.88 11.9192 1049.66 13.2508C1049.12 13.8517 1048.8 14.6247 1048.76 15.4365C1048.67 17.2353 1047.24 18.6745 1045.44 18.7589C1044.62 18.797 1043.85 19.1172 1043.25 19.6642C1041.92 20.8765 1039.88 20.8765 1038.55 19.6642C1037.95 19.1172 1037.18 18.797 1036.37 18.7589C1034.57 18.6745 1033.13 17.2353 1033.04 15.4365C1033.01 14.6247 1032.69 13.8517 1032.14 13.2508C1030.93 11.9192 1030.93 9.88381 1032.14 8.5522C1032.69 7.95127 1033.01 7.17824 1033.04 6.36647C1033.13 4.56768 1034.57 3.12847 1036.37 3.04408C1037.18 3.006 1037.95 2.6858 1038.55 2.13872C1039.88 0.926462 1041.92 0.926462 1043.25 2.13872C1043.85 2.6858 1044.62 3.006 1045.44 3.04408C1047.24 3.12848 1048.67 4.56768 1048.76 6.36647C1048.8 7.17824 1049.12 7.95127 1049.66 8.5522Z" fill={color}/>
-          <path d="M1 11L1009 11.0001" stroke={color} strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-      </motion.div>
-    )}
-  </AnimatePresence>
-);
 
 
 const TextContent = ({ text, className = "" }) => (
@@ -1842,16 +1873,12 @@ const ThemeText = ({
   previousText, 
   currentTheme,
   isTransitioning,
-  themes,
-  isChatOpen
 }) => {
   if (isTransitioning && textState !== 'transitioning') return null;
 
-  const currentColor = themes?.[Math.round(currentTheme)]?.color || '#ff4b6b';
 
   return (
     <div className="absolute left-1 top-1/2 -mt-32 w-full text-center z-[1]">
-      <BrandBar color={currentColor} textState={textState} isChatOpen={isChatOpen}/>
       
       <AnimatePresence mode="sync">
         {textState === 'entering' && (
@@ -1909,7 +1936,7 @@ const ThemeText = ({
 
 export default ThemeText;
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\services\aiChatService.js
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\services\aiChatService.js
 
 import OpenAI from 'openai';
 
@@ -1998,7 +2025,7 @@ const chatService = {
 
 export default chatService;
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\services\chatStorageService.js
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\services\chatStorageService.js
 
 // services/chatStorageService.js
 export const chatStorageService = {
@@ -2030,361 +2057,10 @@ export const chatStorageService = {
   }
 };
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\services\visionService.js
-
-class VisionService {
-  constructor() {
-    this.videoElement = null;
-    this.camera = null;
-    this.pose = null;
-    this.isConnected = false;
-    this.onPresenceChange = null;
-    this.isViewerPresent = false;
-    this.lastPresenceTime = Date.now();
-    this.isInitializing = false;
-    this.suspended = false;
-    this.initializationAttempts = 0;
-    this.maxInitAttempts = 5;
-    this.cooldownPeriod = 5000;
-    this.lastAttemptTime = 0;
-    this.retryCount = 0;
-    this.maxRetries = 3;
-    this.processingFrame = false;
-    this.SHOULDER_WIDTH_THRESHOLD = 0.2;
-    this.PRESENCE_TIMEOUT = 2000;
-
-    // 로그 관련 속성
-    this.connectionStartTime = null;
-    this.logInterval = null;
-    this.totalAttempts = 0;
-  }
-
-  logConnectionAttempt() {
-    if (!this.connectionStartTime) {
-      this.connectionStartTime = Date.now();
-      this.totalAttempts = 1;
-    } else {
-      this.totalAttempts++;
-    }
-
-    const elapsedTime = ((Date.now() - this.connectionStartTime) / 1000).toFixed(1);
-    const attempts = this.totalAttempts;
-    
-    console.log(
-      `%c[Vision Service] Reconnecting... (Attempt ${attempts}, Time: ${elapsedTime}s)`,
-      'color: #fbbf24; font-weight: bold;'
-    );
-  }
-
-  startConnectionLog() {
-    if (this.logInterval) return;
-    
-    console.log(
-      '%c[Vision Service] Starting connection process...',
-      'color: #60a5fa; font-weight: bold;'
-    );
-    
-    this.logInterval = setInterval(() => {
-      const dots = '.'.repeat(this.totalAttempts % 4);
-      const spaces = ' '.repeat(3 - (this.totalAttempts % 4));
-      console.log(
-        `%c[Vision Service] Attempting to connect${dots}${spaces}`,
-        'color: #93c5fd;'
-      );
-    }, 1000);
-  }
-
-  stopConnectionLog(success = false) {
-    if (this.logInterval) {
-      clearInterval(this.logInterval);
-      this.logInterval = null;
-    }
-
-    const elapsedTime = ((Date.now() - this.connectionStartTime) / 1000).toFixed(1);
-    const attempts = this.totalAttempts;
-
-    if (success) {
-      console.log(
-        `%c[Vision Service] Connected successfully! (Attempts: ${attempts}, Time: ${elapsedTime}s)`,
-        'color: #34d399; font-weight: bold;'
-      );
-    } else {
-      console.log(
-        `%c[Vision Service] Connection failed after ${attempts} attempts (${elapsedTime}s)`,
-        'color: #f87171; font-weight: bold;'
-      );
-    }
-
-    this.connectionStartTime = null;
-    this.totalAttempts = 0;
-  }
-
-  setupVideoElement() {
-    if (this.videoElement) return this.videoElement;
-
-    const video = document.createElement('video');
-    video.style.cssText = `
-      position: fixed;
-      right: 0;
-      bottom: 0;
-      width: 32px;
-      height: 24px;
-      opacity: 0;
-      pointer-events: none;
-      z-index: -1;
-    `;
-    video.playsInline = true;
-    video.muted = true;
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
-    document.body.appendChild(video);
-    this.videoElement = video;
-    return video;
-  }
-
-  onResults = (results) => {
-    if (this.suspended || !results.poseLandmarks) {
-      this.updatePresence(false);
-      return;
-    }
-
-    try {
-      const leftShoulder = results.poseLandmarks[11];
-      const rightShoulder = results.poseLandmarks[12];
-      
-      if (!leftShoulder || !rightShoulder) {
-        this.updatePresence(false);
-        return;
-      }
-
-      const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
-      this.updatePresence(shoulderWidth > this.SHOULDER_WIDTH_THRESHOLD);
-    } catch (error) {
-      console.warn('Error processing pose results:', error);
-      this.updatePresence(false);
-    }
-  }
-
-  updatePresence(isDetected) {
-    if (!this.isConnected || this.suspended) return false;
-
-    const currentTime = Date.now();
-    const previousState = this.isViewerPresent;
-
-    if (isDetected) {
-      this.lastPresenceTime = currentTime;
-      if (!this.isViewerPresent) {
-        this.isViewerPresent = true;
-        requestAnimationFrame(() => {
-          if (this.onPresenceChange && !this.suspended) {
-            this.onPresenceChange(true);
-          }
-        });
-      }
-    } else if (this.isViewerPresent) {
-      const timeSinceLastPresence = currentTime - this.lastPresenceTime;
-      if (timeSinceLastPresence > this.PRESENCE_TIMEOUT) {
-        this.isViewerPresent = false;
-        requestAnimationFrame(() => {
-          if (this.onPresenceChange && !this.suspended) {
-            this.onPresenceChange(false);
-          }
-        });
-      }
-    }
-
-    return previousState !== this.isViewerPresent;
-  }
-
-  async initializeMediaPipe() {
-    try {
-      const { Pose } = await import('@mediapipe/pose');
-      
-      const pose = new Pose({
-        locateFile: (file) => {
-          return `/node_modules/@mediapipe/pose/${file}`;
-        }
-      });
-
-      pose.setOptions({
-        modelComplexity: 0,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-        selfieMode: true
-      });
-
-      pose.onResults(this.onResults);
-
-      try {
-        await pose.initialize();
-        return pose;
-      } catch (error) {
-        console.error('Failed to initialize MediaPipe Pose:', error);
-        throw error;
-      }
-    } catch (error) {
-      console.error('Failed to load MediaPipe Pose:', error);
-      throw error;
-    }
-  }
-
-  async processFrame() {
-    if (!this.isConnected || !this.pose || this.suspended || this.processingFrame) return;
-    
-    try {
-      this.processingFrame = true;
-      await this.pose.send({ image: this.videoElement });
-    } catch (error) {
-      console.warn('Frame processing error:', error);
-    } finally {
-      this.processingFrame = false;
-    }
-  }
-
-  async setupCamera() {
-    try {
-      const { Camera } = await import('@mediapipe/camera_utils');
-
-      if (!this.videoElement) {
-        throw new Error('Camera dependencies not initialized');
-      }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: 640,
-            height: 480,
-            facingMode: 'user',
-            frameRate: { ideal: 30 }
-          }
-        });
-
-        this.videoElement.srcObject = stream;
-        await this.videoElement.play();
-
-        const camera = new Camera(this.videoElement, {
-          onFrame: async () => this.processFrame(),
-          width: 640,
-          height: 480
-        });
-
-        return camera;
-      } catch (error) {
-        console.error('Camera setup failed:', error);
-        throw error;
-      }
-    } catch (error) {
-      console.error('Failed to load Camera utils:', error);
-      throw error;
-    }
-  }
-
-  suspend() {
-    if (!this.isConnected) return;
-    console.log('%c[Vision Service] Suspended', 'color: #9ca3af;');
-    this.suspended = true;
-    this.processingFrame = false;
-  }
-
-  resume() {
-    if (!this.isConnected) return;
-    console.log('%c[Vision Service] Resumed', 'color: #9ca3af;');
-    this.suspended = false;
-  }
-
-  async connect() {
-    if (this.isConnected || this.isInitializing) return;
-
-    const currentTime = Date.now();
-    if (currentTime - this.lastAttemptTime < this.cooldownPeriod) {
-      console.warn('Attempting to reconnect too quickly, waiting for cooldown');
-      return;
-    }
-
-    try {
-      this.isInitializing = true;
-      this.lastAttemptTime = currentTime;
-      this.initializationAttempts++;
-
-      if (!this.connectionStartTime) {
-        this.startConnectionLog();
-      }
-      this.logConnectionAttempt();
-
-      if (this.initializationAttempts > this.maxInitAttempts) {
-        console.warn('Max initialization attempts reached, waiting for longer cooldown');
-        await new Promise(resolve => setTimeout(resolve, this.cooldownPeriod * 2));
-        this.initializationAttempts = 0;
-      }
-
-      this.setupVideoElement();
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      this.pose = await this.initializeMediaPipe();
-      this.camera = await this.setupCamera();
-      await this.camera.start();
-
-      this.isConnected = true;
-      this.initializationAttempts = 0;
-      this.stopConnectionLog(true);
-
-    } catch (error) {
-      console.error('Vision Service initialization failed:', error);
-      this.disconnect();
-      
-      const retryDelay = Math.min(1000 * Math.pow(2, this.initializationAttempts), 10000);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      
-      if (this.initializationAttempts < this.maxInitAttempts) {
-        return this.connect();
-      } else {
-        this.stopConnectionLog(false);
-      }
-    } finally {
-      this.isInitializing = false;
-    }
-  }
-
-  disconnect() {
-    console.log('%c[Vision Service] Disconnecting...', 'color: #9ca3af;');
-    this.suspended = true;
-    this.processingFrame = false;
-
-    if (this.camera) {
-      this.camera.stop();
-      this.camera = null;
-    }
-
-    if (this.pose) {
-      this.pose.close();
-      this.pose = null;
-    }
-
-    if (this.videoElement?.srcObject) {
-      const tracks = this.videoElement.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
-      this.videoElement.remove();
-      this.videoElement = null;
-    }
-
-    this.isConnected = false;
-    this.isInitializing = false;
-    this.isViewerPresent = false;
-    this.retryCount = 0;
-    
-    if (this.logInterval) {
-      this.stopConnectionLog(false);
-    }
-  }
-}
-
-const visionService = new VisionService();
-export default visionService;
-
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\types\aiTypes.js
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\types\aiTypes.js
 
 
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\utils\soundEffects.js
+File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\src\utils\soundEffects.js
 
 // utils/soundEffects.js
 const playSound = (soundName, volume = 1.0) => {
@@ -2434,41 +2110,3 @@ export const playSequence = async (soundNames, interval = 200) => {
 };
 
 export default sounds;
-
-File: C:\Users\yc231\Desktop\이승훈.작업자료\2024\2학기\졸전도움\산디_강예슬_웹\graduation_exhibition_KYS-main\graduation_exhibition_KYS-main\src\utils\visionWorker.js
-
-// visionWorker.js
-let detectionActive = false;
-
-self.onmessage = async (e) => {
-  const { type, imageData } = e.data;
-  
-  if (type === 'start') {
-    detectionActive = true;
-    self.postMessage({ type: 'started' });
-  }
-  else if (type === 'stop') {
-    detectionActive = false;
-  }
-  else if (type === 'process' && detectionActive) {
-    // 간단한 움직임 감지 - 픽셀 변화 분석
-    try {
-      const data = imageData.data;
-      let movement = 0;
-      
-      // 픽셀 변화량 체크 (단순화된 알고리즘)
-      for (let i = 0; i < data.length; i += 40) {
-        movement += Math.abs(data[i] - (data[i - 4] || 0));
-      }
-      
-      // 임계값 이상의 움직임이 감지되면 presence = true
-      const threshold = 1000;
-      self.postMessage({ 
-        type: 'result', 
-        isPresent: movement > threshold 
-      });
-    } catch (error) {
-      self.postMessage({ type: 'error', error: error.message });
-    }
-  }
-};

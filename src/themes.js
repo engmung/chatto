@@ -1,70 +1,93 @@
-// themes.js
 const positiveMemories = [
   {
-    question: "최근에 가장 행복했던 순간은 언제인가요?",
-    color: '#FF8C69'
+    question: "지금 이 순간 당신의 마음을 따뜻하게 하는 것은 무엇인가요?",
+    color: '#FF6B4A'
   },
   {
-    question: "지금 가장 감사한 것이 있다면 무엇인가요?",
-    color: '#FFA07A'
+    question: "오늘 하루 동안 느낀 작은 기쁨은 무엇인가요?",
+    color: '#FF7F5C'
   },
   {
-    question: "최근에 누군가에게서 받은 친절한 행동이 있나요?",
-    color: '#FFB07C'
+    question: "방금 전까지 하고 있던 일에서 어떤 즐거움을 찾았나요?",
+    color: '#FF8A4D'
   },
   {
-    question: "스스로 칭찬하고 싶은 점이 있다면 무엇인가요?",
-    color: '#FFD0A6'
+    question: "지금 이 순간 당신을 미소 짓게 하는 것은 무엇인가요?",
+    color: '#FFB375'
   },
   {
-    question: "가장 기대되는 일이 있다면 무엇인가요?",
-    color: '#FFC590'
+    question: "오늘 하루 중 가장 설레는 순간은 언제였나요?",
+    color: '#FF9E5C'
+  },
+  {
+    question: "방금 전까지 느낀 감사한 마음이 있다면 무엇인가요?",
+    color: '#FF8466'
+  },
+  {
+    question: "지금 이 순간 당신에게 힘이 되는 것은 무엇인가요?",
+    color: '#FF8A99'
   }
 ];
 
 const challengingMemories = [
   {
-    question: "최근에 가장 어려웠던 결정은 무엇인가요?",
-    color: '#7F7FFF'
+    question: "지금 이 순간 가장 마음에 걸리는 생각은 무엇인가요?",
+    color: '#5C5CFF'
   },
   {
-    question: "지금 가장 해결하고 싶은 문제는 무엇인가요?",
-    color: '#6B8EFF'
+    question: "오늘 하루 동안 느낀 불안이나 걱정이 있나요?",
+    color: '#476BFF'
   },
   {
-    question: "좌절감을 느꼈던 최근의 순간은 언제인가요?",
-    color: '#5FA0FF'
+    question: "방금 전까지 고민하고 있던 문제는 무엇인가요?",
+    color: '#3D85FF'
   },
   {
-    question: "스스로를 더 강하게 만들어준 경험이 있다면?",
-    color: '#59B8FF'
+    question: "지금 이 순간 변화시키고 싶은 것이 있다면 무엇인가요?",
+    color: '#3DA3FF'
   },
   {
-    question: "다시 도전하고 싶은 일이 있다면 무엇인가요?",
-    color: '#6FAFFF'
+    question: "오늘 마주한 어려움에서 배운 점이 있다면 무엇인가요?",
+    color: '#4D94FF'
+  },
+  {
+    question: "방금 전까지 느낀 답답한 감정이 있다면 무엇인가요?",
+    color: '#5C8AFF'
+  },
+  {
+    question: "지금 이 순간 해결하고 싶은 감정은 무엇인가요?",
+    color: '#47B8FF'
   }
 ];
 
 const reflectiveMemories = [
   {
-    question: "요즘 자주 생각하게 되는 것은 무엇인가요?",
-    color: '#90EE90'
+    question: "지금 이 순간 당신의 마음 상태는 어떤가요?",
+    color: '#66E066'
   },
   {
-    question: "최근에 배운 가장 중요한 교훈은 무엇인가요?",
-    color: '#A1F2A1'
+    question: "오늘 하루 동안 특별히 의미 있었던 순간이 있나요?",
+    color: '#7AE87A'
   },
   {
-    question: "자신의 성장에 대해 어떤 생각을 하시나요?",
-    color: '#B3F7B3'
+    question: "방금 전까지 떠올린 생각들은 어떤 것들인가요?",
+    color: '#8FEF8F'
   },
   {
-    question: "미래에 대한 가장 큰 희망은 무엇인가요?",
-    color: '#C4FAC4'
+    question: "지금 이 순간 가장 크게 느껴지는 감정은 무엇인가요?",
+    color: '#A3F4A3'
   },
   {
-    question: "스스로에게 해주고 싶은 말이 있다면 무엇인가요?",
-    color: '#D8FFD8'
+    question: "오늘 하루를 보내며 깨달은 것이 있다면 무엇인가요?",
+    color: '#B8FFB8'
+  },
+  {
+    question: "방금 전까지 나누었던 대화가 있다면 어떤 내용이었나요?",
+    color: '#66F066'
+  },
+  {
+    question: "지금 이 순간 당신의 호흡은 어떤가요?",
+    color: '#66B066'
   }
 ];
 
@@ -76,8 +99,7 @@ function generateThemeData() {
   return [
     {
       id: 0,
-      color: '#FF6B6B',
-      question: "오늘 하루 중 가장 기분 좋았던 순간은?",
+      ...getRandomItem(reflectiveMemories),
       floatingParams: { speed: 1, amplitude: 0.1, phase: 0 }
     },
     {
@@ -97,8 +119,7 @@ function generateThemeData() {
     },
     {
       id: 4,
-      color: '#4CAF50',
-      question: "오늘 자신을 가장 뿌듯하게 했던 것은?",
+      ...getRandomItem(positiveMemories),
       floatingParams: { speed: 1.1, amplitude: 0.13, phase: Math.PI / 2.5 }
     }
   ];

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Scene3D from './components/Scene3D';
 import ThemeText from './components/ThemeText';
@@ -10,10 +10,11 @@ import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { sounds } from './utils/soundEffects';
 
 const CONFIG = {
-  GUIDE_SHOW_INTERVAL: 20000,    
-  GUIDE_DURATION: 10000,         
   THEME_INACTIVE_TIMEOUT: 20000, 
-  CHAT_INACTIVE_TIMEOUT: 40000   
+  CHAT_INACTIVE_TIMEOUT: 40000,
+  SCROLL_SENSITIVITY: 50,
+  SCROLL_COOLDOWN: 250,
+  TOUCH_SENSITIVITY: 50
 };
 
 const App = () => {
@@ -32,57 +33,45 @@ const App = () => {
   const [isActive, setIsActive] = useState(false);
   const [hasUserInteraction, setHasUserInteraction] = useState(false);
   const [lastActivityTime, setLastActivityTime] = useState(Date.now());
+  const [isScrolling, setIsScrolling] = useState(false);
 
   const autoChangeInterval = useRef(null);
   const bounceAnimationRef = useRef(null);
   const inactivityTimerRef = useRef(null);
-  const guideTimerRef = useRef(null);
   const directionRef = useRef(1);
   const lastInactiveTime = useRef(null);
+  const scrollTimeout = useRef(null);
+  const lastWheelEvent = useRef(null);
+  const touchStart = useRef(null);
 
   const clearAllTimers = () => {
-  if (autoChangeInterval.current) {
-    clearInterval(autoChangeInterval.current);
-    autoChangeInterval.current = null;
-  }
-  if (inactivityTimerRef.current) {
-    clearTimeout(inactivityTimerRef.current);
-    inactivityTimerRef.current = null;
-  }
-  if (guideTimerRef.current) {
-    clearTimeout(guideTimerRef.current);
-    guideTimerRef.current = null;
-  }
-  lastInactiveTime.current = null;
-};
-
-  const startGuideTimer = () => {
-    if (guideTimerRef.current) {
-      clearTimeout(guideTimerRef.current);
+    if (autoChangeInterval.current) {
+      clearInterval(autoChangeInterval.current);
+      autoChangeInterval.current = null;
     }
-    
-    if (currentState === 'idle' && !hasKeyInteraction) {
-      guideTimerRef.current = setTimeout(() => {
-        setHasKeyInteraction(true);
-        setTimeout(() => {
-          setHasKeyInteraction(false);
-        }, CONFIG.GUIDE_DURATION);
-      }, CONFIG.GUIDE_SHOW_INTERVAL);
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
     }
+    if (scrollTimeout.current) {
+      clearTimeout(scrollTimeout.current);
+      scrollTimeout.current = null;
+    }
+    lastInactiveTime.current = null;
   };
 
   const checkAndResetInactivity = () => {
-  if (!hasKeyInteraction && lastInactiveTime.current) {
-    const currentTime = Date.now();
-    const inactiveTime = currentTime - lastInactiveTime.current;
-    const timeout = isChatOpen ? CONFIG.CHAT_INACTIVE_TIMEOUT : CONFIG.THEME_INACTIVE_TIMEOUT;
+    if (!hasKeyInteraction && lastInactiveTime.current) {
+      const currentTime = Date.now();
+      const inactiveTime = currentTime - lastInactiveTime.current;
+      const timeout = isChatOpen ? CONFIG.CHAT_INACTIVE_TIMEOUT : CONFIG.THEME_INACTIVE_TIMEOUT;
 
-    if (inactiveTime >= timeout) {
-      handleReset();
-      lastInactiveTime.current = null;
+      if (inactiveTime >= timeout) {
+        handleReset();
+        lastInactiveTime.current = null;
+      }
     }
-  }
-};
+  };
 
   const startInactivityTimer = () => {
     if (inactivityTimerRef.current) {
@@ -123,84 +112,127 @@ const App = () => {
   };
 
   const startIdleMode = () => {
-  clearAllTimers();
-  setCurrentState('idle');
-  setTextState('none');
-  setThemes(generateThemeData());
-  setCurrentTheme(0);
-  setHasKeyInteraction(false);
-  setIsActive(false);
-  startAutoChange();
-};
+    clearAllTimers();
+    setCurrentState('idle');
+    setTextState('none');
+    setThemes(generateThemeData());
+    setCurrentTheme(0);
+    setHasKeyInteraction(false);
+    setIsActive(false);
+    startAutoChange();
+  };
 
   window.resetToIdle = startIdleMode;
 
   const handleReset = () => {
-  sounds.reset();
-  setIsChatOpen(false);
-  setIsChatClosing(true);
+    sounds.reset();
+    setIsChatOpen(false);
+    setIsChatClosing(true);
+    
+    if (window.history.state?.page !== 'idle') {
+      window.history.go(-window.history.length + 1);
+    }
 
-  // 채팅 인터페이스 애니메이션 완료 후 상태 리셋
-  setTimeout(() => {
-    setIsChatClosing(false);
-    startIdleMode();
-  }, 500);  // 채팅창 닫힘 애니메이션과 동일한 시간
-};
+    setTimeout(() => {
+      setIsChatClosing(false);
+      startIdleMode();
+    }, 500);
+  };
 
   const handleInteraction = () => {
     setLastActivityTime(Date.now());
     
     if (currentState === 'idle') {
       setHasKeyInteraction(true);
-      if (guideTimerRef.current) {
-        clearTimeout(guideTimerRef.current);
-      }
     }
   };
 
-  // 테마 변경 시
-const handleThemeChange = (changeDirection) => {
-  handleInteraction();
-  if ((currentState === 'active' || currentState === 'idle') && 
-      !bounceAnimationRef.current && !isTransitioning) {
-    const nextTheme = currentTheme + changeDirection;
+  const handleThemeChange = (changeDirection) => {
+    handleInteraction();
+    if ((currentState === 'active' || currentState === 'idle') && 
+        !bounceAnimationRef.current && !isTransitioning) {
+      const nextTheme = currentTheme + changeDirection;
+      
+      if (nextTheme < 0 || nextTheme >= themes.length) {
+        return;
+      }
+      
+      sounds.move();
+      
+      if (currentState === 'active') {
+        setIsTransitioning(true);
+        setPreviousText(currentText);
+        setCurrentText(themes[nextTheme].question);
+        setTextState('transitioning');
+        
+        const textUpdateTimeout = setTimeout(() => {
+          if (currentState === 'active') {
+            setTextState('active');
+            setIsTransitioning(false);
+          }
+        }, 900);
+      } else if (currentState === 'idle') {
+        setIsTransitioning(false);
+        setTextState('none');
+        setPreviousText(null);
+        setCurrentText(null);
+        startAutoChange();
+      }
+      
+      setCurrentTheme(nextTheme);
+    }
+  };
+
+  const handleWheel = (e) => {
+    e.preventDefault();
+
+    if (isChatOpen || isTransitioning) return;
+
+    const currentTime = Date.now();
     
-    if (nextTheme < 0 || nextTheme >= themes.length) {
+    if (lastWheelEvent.current && currentTime - lastWheelEvent.current < CONFIG.SCROLL_COOLDOWN) {
       return;
     }
-    
-    sounds.move();
 
+    const scrollDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     
-    
-    // 비전 처리 일시 중지 (매우 짧은 시간만)
-    setTimeout(() => {
-      // visionService.suspend();
-    }, 100);
-    
-    if (currentState === 'active') {
-      setIsTransitioning(true);
-      setPreviousText(currentText);
-      setCurrentText(themes[nextTheme].question);
-      setTextState('transitioning');
-    }
-    
-    setCurrentTheme(nextTheme);
-
-    const textUpdateTimeout = setTimeout(() => {
-      if (currentState === 'active') {
-        setTextState('active');
-        setIsTransitioning(false);
+    if (Math.abs(scrollDelta) > CONFIG.SCROLL_SENSITIVITY) {
+      const direction = scrollDelta > 0 ? 1 : -1;
+      handleThemeChange(direction);
+      lastWheelEvent.current = currentTime;
+      
+      setIsScrolling(true);
+      
+      if (scrollTimeout.current) {
+        clearTimeout(scrollTimeout.current);
       }
-    }, 900);
-
-    if (currentState === 'idle') {
-      startAutoChange();
-      clearTimeout(textUpdateTimeout);
+      
+      scrollTimeout.current = setTimeout(() => {
+        setIsScrolling(false);
+      }, CONFIG.SCROLL_COOLDOWN);
     }
-  }
-};
+  };
 
+  const handleTouchStart = (e) => {
+    touchStart.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e) => {
+    if (!touchStart.current) return;
+    
+    const touchEnd = e.touches[0].clientX;
+    const delta = touchStart.current - touchEnd;
+
+    if (Math.abs(delta) > CONFIG.TOUCH_SENSITIVITY) {
+      const direction = delta > 0 ? 1 : -1;
+      handleThemeChange(direction);
+      touchStart.current = null;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStart.current = null;
+  };
 
   const handleStateChange = () => {
     handleInteraction();
@@ -209,12 +241,15 @@ const handleThemeChange = (changeDirection) => {
     
     if (currentState === 'active') {
       setIsChatOpen(true);
+      window.history.pushState({ page: 'chat' }, '');
     } else {
       setTimeout(() => {
         setIsActive(true);
         setCurrentState('active');
         setCurrentText(themes[Math.round(currentTheme)].question);
         setTextState('entering');
+        
+        window.history.pushState({ page: 'active' }, '');
         
         setTimeout(() => {
           setTextState('active');
@@ -224,7 +259,7 @@ const handleThemeChange = (changeDirection) => {
           clearInterval(autoChangeInterval.current);
           autoChangeInterval.current = null;
         }
-      }, );
+      });
     }
     
     handleInteraction();
@@ -240,6 +275,57 @@ const handleThemeChange = (changeDirection) => {
     }, 500);
   };
 
+  const handlePopState = useCallback((event) => {
+    if (isChatOpen) {
+      handleChatClose();
+    } else if (currentState === 'active') {
+      setCurrentState('idle');
+      setTextState('none');
+      setIsActive(false);
+      
+      if (autoChangeInterval.current) {
+        clearInterval(autoChangeInterval.current);
+      }
+      
+      setDirection(1);
+      directionRef.current = 1;
+      
+      autoChangeInterval.current = setInterval(() => {
+        setCurrentTheme(prev => {
+          if (prev === themes.length - 1) {
+            setDirection(-1);
+            directionRef.current = -1;
+            return prev - 1;
+          }
+          else if (prev === 0) {
+            setDirection(1);
+            directionRef.current = 1;
+            return prev + 1;
+          }
+          return prev + directionRef.current;
+        });
+      }, 7000);
+    }
+  }, [isChatOpen, currentState, themes.length]);
+
+  useEffect(() => {
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    const element = document.body;
+    element.addEventListener('touchstart', handleTouchStart);
+    element.addEventListener('touchmove', handleTouchMove);
+    element.addEventListener('touchend', handleTouchEnd);
+    
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+      element.removeEventListener('touchstart', handleTouchStart);
+      element.removeEventListener('touchmove', handleTouchMove);
+      element.removeEventListener('touchend', handleTouchEnd);
+      if (scrollTimeout.current) {
+        clearTimeout(scrollTimeout.current);
+      }
+    };
+  }, [currentTheme, isTransitioning, isChatOpen]);
+
   useEffect(() => {
     const checkInterval = setInterval(() => {
       if (!hasKeyInteraction && (currentState === 'active' || isChatOpen)) {
@@ -251,10 +337,10 @@ const handleThemeChange = (changeDirection) => {
   }, [hasKeyInteraction, currentState, isChatOpen]);
 
   useEffect(() => {
-  if (!hasKeyInteraction && (currentState === 'active' || isChatOpen)) {
-    startInactivityTimer();
-  }
-}, [hasKeyInteraction, currentState, isChatOpen]);
+    if (!hasKeyInteraction && (currentState === 'active' || isChatOpen)) {
+      startInactivityTimer();
+    }
+  }, [hasKeyInteraction, currentState, isChatOpen]);
 
   useEffect(() => {
     if (currentState === 'idle') {
@@ -264,54 +350,42 @@ const handleThemeChange = (changeDirection) => {
   }, [currentState]);
 
   useEffect(() => {
-  const handleKeyPress = (e) => {
-    handleInteraction();
-    setHasUserInteraction(true);
+    const handleKeyPress = (e) => {
+      handleInteraction();
+      setHasUserInteraction(true);
 
-    if (e.key === 'Escape') {
-      if (isChatOpen || currentState === 'active') {
-        handleReset();
+      if (e.key === 'Escape') {
+        if (isChatOpen || currentState === 'active') {
+          handleEscapeBack();
+        }
       }
-    }
-    
-    if (isChatOpen) return;
+      
+      if (isChatOpen) return;
 
-    if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
-      handleStateChange();
-    } else if (currentState === 'active') {
-      if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
-        handleThemeChange(-1);
-      } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
-        handleThemeChange(1);
-      } else if (e.key === ' ' || e.key === 'Enter') {
+      if (currentState === 'idle' && (e.key === ' ' || e.key === 'Enter')) {
         handleStateChange();
-      }
-    } else if (currentState === 'idle') {
-      if (e.key === 'ArrowLeft' || e.key === 'a') {
-        handleThemeChange(-1);
-      } else if (e.key === 'ArrowRight' || e.key === 'd') {
-        handleThemeChange(1);
-      }
-    }
-  };
-
-  window.addEventListener('keydown', handleKeyPress);
-  return () => window.removeEventListener('keydown', handleKeyPress);
-}, [currentState, currentTheme, isTransitioning, isChatOpen]);
-
-  useEffect(() => {
-    if (currentState === 'idle') {
-      startGuideTimer();
-    }
-    return () => {
-      if (guideTimerRef.current) {
-        clearTimeout(guideTimerRef.current);
+      } else if (currentState === 'active') {
+        if ((e.key === 'ArrowLeft' || e.key === 'a') && !isTransitioning) {
+          handleThemeChange(-1);
+        } else if ((e.key === 'ArrowRight' || e.key === 'd') && !isTransitioning) {
+          handleThemeChange(1);
+        } else if (e.key === ' ' || e.key === 'Enter') {
+          handleStateChange();
+        }
+      } else if (currentState === 'idle') {
+        if (e.key === 'ArrowLeft' || e.key === 'a') {
+          handleThemeChange(-1);
+        } else if (e.key === 'ArrowRight' || e.key === 'd') {
+          handleThemeChange(1);
+        }
       }
     };
-  }, [currentState, hasKeyInteraction]);
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentState, currentTheme, isTransitioning, isChatOpen]);
 
   useEffect(() => {
-    // idle 상태일 때는 타이머를 실행하지 않음
     if (currentState === 'idle') return;
 
     const inactivityCheck = setInterval(() => {
@@ -327,59 +401,142 @@ const handleThemeChange = (changeDirection) => {
     return () => clearInterval(inactivityCheck);
   }, [currentState, isChatOpen, lastActivityTime]);
 
+  useEffect(() => {
+    window.addEventListener('popstate', handlePopState);
+    window.history.pushState({ page: 'idle' }, '');
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [handlePopState]);
+
   const renderDirectionArrows = () => {
-  if (currentState !== 'active') return null;
+    if (currentState !== 'active') return null;
+
+    return (
+      <AnimatePresence mode="sync">
+        {!isChatOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+            className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between"
+          >
+            <AnimatePresence mode="sync">
+              {currentTheme > 0 && (
+                <motion.div 
+                  key="left-arrow"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ 
+                    opacity: isScrolling ? 0.4 : 1,
+                    x: 0,
+                    scale: isScrolling ? 0.95 : 1
+                  }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.5, ease: "easeInOut" }}
+                  className="text-gray-600 animate-pulse cursor-pointer"
+                  onClick={() => !isTransitioning && handleThemeChange(-1)}
+                >
+                  <ArrowLeft size={64} strokeWidth={2.5} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            <div className="flex-grow" />
+            
+            <AnimatePresence mode="sync">
+              {currentTheme < themes.length - 1 && (
+                <motion.div 
+                  key="right-arrow"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ 
+                    opacity: isScrolling ? 0.4 : 1,
+                    x: 0,
+                    scale: isScrolling ? 0.95 : 1
+                  }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.5, ease: "easeInOut" }}
+                  className="text-gray-600 animate-pulse cursor-pointer"
+                  onClick={() => !isTransitioning && handleThemeChange(1)}
+                >
+                  <ArrowRight size={64} strokeWidth={2.5} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  };
+
+  const handleEscapeBack = () => {
+    sounds.reset();
+    
+    if (isChatOpen) {
+      setIsChatOpen(false);
+      setIsChatClosing(true);
+      window.history.back();
+      setTimeout(() => {
+        setIsChatClosing(false);
+      }, 500);
+    } else if (currentState === 'active') {
+      setIsTransitioning(false);
+      setTextState('none');
+      setPreviousText(null);
+      setCurrentText(null);
+      
+      setCurrentState('idle');
+      setIsActive(false);
+      window.history.back();
+      
+      if (autoChangeInterval.current) {
+        clearInterval(autoChangeInterval.current);
+      }
+      
+      setDirection(1);
+      directionRef.current = 1;
+      
+      autoChangeInterval.current = setInterval(() => {
+        setCurrentTheme(prev => {
+          if (prev === themes.length - 1) {
+            setDirection(-1);
+            directionRef.current = -1;
+            return prev - 1;
+          }
+          else if (prev === 0) {
+            setDirection(1);
+            directionRef.current = 1;
+            return prev + 1;
+          }
+          return prev + directionRef.current;
+        });
+      }, 7000);
+    }
+  };
+
+  const handleSceneClick = (clickedTheme = null) => {
+    handleInteraction();
+    
+    if (currentState === 'idle' && clickedTheme !== null) {
+      const targetTheme = clickedTheme;
+      if (targetTheme !== currentTheme) {
+        sounds.move();
+        setCurrentTheme(targetTheme);
+        startAutoChange();
+      }
+    } else if (currentState === 'idle') {
+      handleStateChange();
+    } else if (currentState === 'active' && !isChatOpen) {
+      handleStateChange();
+    }
+  };
 
   return (
-    <AnimatePresence mode="sync"> {/* "wait"에서 "sync"로 변경 */}
-      {!isChatOpen && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.5, ease: "easeInOut" }}
-          className="fixed top-1/2 transform -translate-y-1/2 w-full px-8 flex justify-between pointer-events-none"
-        >
-          <AnimatePresence mode="sync"> {/* 여기도 "sync"로 설정 */}
-            {currentTheme > 0 && (
-              <motion.div 
-                key="left-arrow"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-                className="text-gray-600 animate-pulse"
-              >
-                <ArrowLeft size={64} strokeWidth={2.5} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-          
-          <div className="flex-grow" />
-          
-          <AnimatePresence mode="sync"> {/* 여기도 "sync"로 설정 */}
-            {currentTheme < themes.length - 1 && (
-              <motion.div 
-                key="right-arrow"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-                className="text-gray-600 animate-pulse"
-              >
-                <ArrowRight size={64} strokeWidth={2.5} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-  };
-  
-  
-  return (
-    <div className="h-screen w-screen relative bg-white">
+    <div 
+      className="h-screen w-screen relative style={{ backgroundColor: '#cccccc' }}"
+      style={{ touchAction: 'none' }}
+    >
       <BackgroundMusic 
         currentState={currentState}
         isChatOpen={isChatOpen}
@@ -392,6 +549,7 @@ const handleThemeChange = (changeDirection) => {
         currentTheme={Math.round(currentTheme)}
         isChatOpen={isChatOpen}
         themes={themes}
+        onSceneClick={handleSceneClick}
       />
       <StartGuide 
         isVisible={currentState === 'idle' && !hasKeyInteraction}
