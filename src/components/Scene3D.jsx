@@ -171,7 +171,7 @@ const Scene3D = ({ currentState, currentTheme, isChatOpen, themes, onSceneClick 
         <mesh position={[0, -0.7, -2]}>
           <planeGeometry args={[50, 50]} />
           <meshStandardMaterial 
-            color="#CCCCCC"
+            color="#eeeeee"
             roughness={1}
             metalness={0}
           />

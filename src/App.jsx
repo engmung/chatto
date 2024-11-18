@@ -534,7 +534,7 @@ const App = () => {
 
   return (
     <div 
-      className="h-screen w-screen relative style={{ backgroundColor: '#cccccc' }}"
+      className="h-screen w-screen relative style={{ backgroundColor: '#eeeeee' }}"
       style={{ touchAction: 'none' }}
     >
       <BackgroundMusic 
