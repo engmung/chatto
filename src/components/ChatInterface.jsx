@@ -383,13 +383,13 @@ const ChatInterface = ({
                 duration: 0.5,
                 ease: "easeInOut"
               }}
-              className="bg-[#F5F5F5]/70 backdrop-blur-[4px] rounded-[30px] w-[1300px] h-[875px] mx-4 flex flex-col shadow-[0px_0px_20px_5px_rgba(0,0,0,0.07)] relative"
+              className="bg-[#F5F5F5]/70 backdrop-blur-[4px] rounded-[30px] w-[1300px] h-[90vh] mx-4 flex flex-col shadow-[0px_0px_20px_5px_rgba(0,0,0,0.07)] relative"
             >
               <div 
                 className="absolute inset-0 rounded-[30px] pointer-events-none"
                 style={{
                   background: createGradient(themeColor),
-                  height: '400px'
+                  height: '45%'
                 }}
               />
 
@@ -397,8 +397,8 @@ const ChatInterface = ({
                 ref={messagesContainerRef}
                 className="flex-1 overflow-y-auto scrollbar-hide flex flex-col"
                 style={{ 
-                  marginTop: '100px',
-                  marginBottom: '80px',
+                  marginTop: '11vh',
+                  marginBottom: '9vh',
                   maskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
                   WebkitMaskImage: 'linear-gradient(to top, black 85%, transparent 100%)'
                 }}
@@ -418,7 +418,7 @@ const ChatInterface = ({
                 <div className="flex-grow" />
               </div>
 
-              <div className="px-8 pb-8 flex justify-center">
+              <div className="px-8 pb-[2vh] flex justify-center">
                 <div className="w-[1200px] bg-white/70 backdrop-blur-[4px] rounded-xl overflow-hidden shadow-[0px_2px_10px_rgba(0,0,0,0.06)]">
                   <form onSubmit={handleSubmit} className="h-[50px] p-0">
                     <input
